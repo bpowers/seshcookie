@@ -3,3 +3,4 @@ _go*
 _obj/
 *~
 _test*
+example/authenticated

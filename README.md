@@ -2,9 +2,13 @@ seshcookie - cookie-based sessions for Go
 =========================================
 
 seshcookie allows you to associate session-state with http requests
-while allowing your server to remain stateless.  It's inspired by
-[Beaker](http://pypi.python.org/pypi/Beaker), which provides a similar
-service for Python webapps.
+while allowing your server to remain stateless.  Because session-state
+is transferred as part of the HTTP request, state can be maintained
+seamlessly between server-restarts or load balancing.  It's inspired
+by [Beaker](http://pypi.python.org/pypi/Beaker), which provides a
+similar service for Python webapps.  The cookies are AES encrypted in
+CBC mode, with the key and initialization vector derived from a
+user-specified key.
 
 Right now it requries a small patch to the Go sources, which can be
 applied by:
@@ -14,7 +18,6 @@ applied by:
     $ cd src; ./all.bash
     $ popd
 
-The example uses seshcookie in a way similar to make sure users are
-authenticated before they can see a particular resource.  In
-particular, it shows how you stack multiple http.Handlers together to
-get the behavior you want.
+The example uses seshcookie to enforce authentication for a particular
+resource.  In particular, it shows how you embed (or stack) multiple
+http.Handlers to get the behavior you want.

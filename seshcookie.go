@@ -150,21 +150,6 @@ func (h *SessionHandler) getCookieSession(req *http.Request) (session map[string
 	return
 }
 
-func getBasicAuth(cookie string) (user, pass string, err os.Error) {
-	if !strings.HasPrefix(cookie, "Basic ") {
-		return "", "", os.NewError("not basic")
-	}
-	auth := cookie[len("Basic "):]
-
-	buf := make([]byte, base64.StdEncoding.DecodedLen(len(auth)))
-	base64.StdEncoding.Decode(buf, []byte(auth))
-	pieces := strings.Split(string(buf), ":", 2)
-	if len(pieces) != 2 {
-		return "", "", os.NewError("not username:pass:" + string(buf))
-	}
-	return pieces[0], pieces[1], nil
-}
-
 func (h *SessionHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// get our session a little early, so that we can add our
 	// authentication information to it if we get some

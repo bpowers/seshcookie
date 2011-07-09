@@ -10,13 +10,8 @@ similar service for Python webapps.  The cookies are AES encrypted in
 CBC mode, with the key and initialization vector derived from a
 user-specified string.
 
-Right now it requries a small patch to the Go sources, which can be
-applied by:
-
-    $ pushd $GOROOT
-    $ patch -p1 <PATH_TO_SESHCOOKIE/go_http.diff
-    $ cd src; ./all.bash
-    $ popd
+example
+-------
 
 The example uses seshcookie to enforce authentication for a particular
 resource.  In particular, it shows how you embed (or stack) multiple

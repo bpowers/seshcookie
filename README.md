@@ -25,5 +25,4 @@ http.Handlers to get the behavior you want.
 license
 -------
 
-seshcookie is offered under the MIT license, see the LICENSE file for
-details.
+seshcookie is offered under the MIT license, see COPYING for details.

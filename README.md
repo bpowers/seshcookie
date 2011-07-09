@@ -8,7 +8,7 @@ seamlessly between server-restarts or load balancing.  It's inspired
 by [Beaker](http://pypi.python.org/pypi/Beaker), which provides a
 similar service for Python webapps.  The cookies are AES encrypted in
 CBC mode, with the key and initialization vector derived from a
-user-specified key.
+user-specified string.
 
 Right now it requries a small patch to the Go sources, which can be
 applied by:

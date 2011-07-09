@@ -21,3 +21,9 @@ applied by:
 The example uses seshcookie to enforce authentication for a particular
 resource.  In particular, it shows how you embed (or stack) multiple
 http.Handlers to get the behavior you want.
+
+license
+-------
+
+seshcookie is offered under the MIT license, see the LICENSE file for
+details.

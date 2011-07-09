@@ -11,6 +11,7 @@ import (
 	"gob"
 	"bytes"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"crypto/sha1"
 	"crypto/aes"
@@ -22,8 +23,7 @@ import (
 type sessionResponseWriter struct {
 	http.ResponseWriter
 	h           *SessionHandler
-	origCookie  string
-	session     map[string]interface{}
+	req         *http.Request
 	wroteHeader int32
 }
 
@@ -32,8 +32,43 @@ type SessionHandler struct {
 	// The name of the cookie our encoded session will be stored
 	// in.
 	CookieName string
+	RS         *RequestSessions
 	key        []byte
 	iv         []byte
+}
+
+type RequestSessions struct {
+	lk sync.Mutex
+	m  map[*http.Request]map[string]interface{}
+}
+
+func (rs *RequestSessions) Get(req *http.Request) map[string]interface{} {
+	rs.lk.Lock()
+	defer rs.lk.Unlock()
+
+	if rs.m == nil {
+		return nil
+	}
+
+	return rs.m[req]
+}
+
+func (rs *RequestSessions) Set(req *http.Request, val map[string]interface{}) {
+	rs.lk.Lock()
+	defer rs.lk.Unlock()
+
+	if rs.m == nil {
+		rs.m = map[*http.Request]map[string]interface{}{}
+	}
+
+	rs.m[req] = val
+}
+
+func (rs *RequestSessions) Clear(req *http.Request) {
+	rs.lk.Lock()
+	defer rs.lk.Unlock()
+
+	rs.m[req] = nil, false
 }
 
 func encodeGob(obj interface{}) (string, os.Error) {
@@ -108,12 +143,21 @@ func decodeCookie(encodedCookie string, key, iv []byte) (map[string]interface{},
 
 func (s sessionResponseWriter) WriteHeader(code int) {
 	if atomic.AddInt32(&s.wroteHeader, 1) == 1 {
-		if len(s.session) == 0 {
+		origCookie, err := s.req.Cookie(s.h.CookieName)
+		var origCookieVal string
+		if err != nil {
+			origCookieVal = ""
+		} else {
+			origCookieVal = origCookie.Value
+		}
+
+		session := s.h.RS.Get(s.req)
+		if len(session) == 0 {
 			// if we have an empty session, but the
 			// request didn't start out that way, we
 			// assume the user wants us to clear the
 			// session
-			if s.origCookie != "" {
+			if origCookieVal != "" {
 				log.Println("clearing cookie")
 				var cookie http.Cookie
 				cookie.Name = s.h.CookieName
@@ -128,13 +172,13 @@ func (s sessionResponseWriter) WriteHeader(code int) {
 			}
 			goto write
 		}
-		encoded, err := encodeCookie(s.session, s.h.key, s.h.iv)
+		encoded, err := encodeCookie(session, s.h.key, s.h.iv)
 		if err != nil {
 			log.Printf("createCookie: %s\n", err)
 			goto write
 		}
 
-		if encoded == s.origCookie {
+		if encoded == origCookieVal {
 			log.Println("not re-setting identical cookie")
 			goto write
 		}
@@ -149,45 +193,47 @@ write:
 	s.ResponseWriter.WriteHeader(code)
 }
 
-func (h *SessionHandler) getCookieSession(req *http.Request) (map[string]interface{}, string) {
-	sessionCookie, err := req.Cookie(h.CookieName)
+func (h *SessionHandler) getCookieSession(req *http.Request) map[string]interface{} {
+	cookie, err := req.Cookie(h.CookieName)
 	if err != nil {
 		log.Printf("getCookieSesh: '%#v' not found\n",
 			h.CookieName)
-		return map[string]interface{}{}, ""
+		return map[string]interface{}{}
 	}
-	cookie := sessionCookie.Value
-	session, err := decodeCookie(cookie, h.key, h.iv)
+	session, err := decodeCookie(cookie.Value, h.key, h.iv)
 	if err != nil {
 		log.Printf("decodeCookie: %s\n", err)
-		return map[string]interface{}{}, ""
+		return map[string]interface{}{}
 	}
 
-	return session, cookie
+	return session
 }
 
 func (h *SessionHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// get our session a little early, so that we can add our
 	// authentication information to it if we get some
-	session, cookie := h.getCookieSession(req)
+	session := h.getCookieSession(req)
 
-	// the 0 value of req.Env is the null map, which isn't very
-	// useful. If necessary, initialize it here
-	if req.Env == nil {
-		req.Env = map[string]interface{}{}
-	}
-	req.Env["session"] = session
+	h.RS.Set(req, session)
 
-	sessionWriter := sessionResponseWriter{rw, h, cookie, session, 0}
+	sessionWriter := sessionResponseWriter{rw, h, req, 0}
 	h.Handler.ServeHTTP(sessionWriter, req)
+
+	h.RS.Clear(req)
 }
 
-func NewSessionHandler(handler http.Handler, cookieName, key string) *SessionHandler {
+func NewSessionHandler(handler http.Handler, cookieName, key string, rs *RequestSessions) *SessionHandler {
 	// sha1 sums are 20 bytes long.  we use the first 16 bytes as
 	// the aes key, and the last 16 bytes as the initialization
 	// vector (understanding that they overlap, of course).
 	keySha1 := sha1.New()
 	keySha1.Write([]byte(key))
 	sum := keySha1.Sum()
-	return &SessionHandler{handler, cookieName, sum[:16], sum[4:]}
+	return &SessionHandler{
+		Handler:    handler,
+		CookieName: cookieName,
+		RS:         rs,
+		key:        sum[:16],
+		iv:         sum[4:],
+	}
 }

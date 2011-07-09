@@ -9,6 +9,8 @@ import (
 	"seshcookie"
 )
 
+var sessions = new(seshcookie.RequestSessions)
+
 type AuthHandler struct {
 	http.Handler
 	Users map[string]string
@@ -16,8 +18,8 @@ type AuthHandler struct {
 
 func (h *AuthHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
-	session := req.Env["session"].(map[string]interface{})
-	log.Printf("o session %#v\n", session)
+	session := sessions.Get(req)
+	log.Printf("using session: %#v\n", session)
 
 	switch req.URL.Path {
 	case "/login":
@@ -66,7 +68,8 @@ func main() {
 		&AuthHandler{http.FileServer(content),
 			map[string]string{"user": "password!"}},
 		"session",
-		"some known but hard to guess session key"))
+		"some known but hard to guess session key",
+		sessions))
 	if err != nil {
 		log.Printf("ListenAndServe:", err)
 	}

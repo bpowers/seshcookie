@@ -1,16 +1,3 @@
-/*
-
-	The seshcookie package implements an http.Handler which
-	provides stateful sessions stored in cookies.  Because
-	session-state is transferred as part of the HTTP request,
-	state can be maintained seamlessly between server-restarts or
-	load balancing.
-
-	For example, here is a simple handler which returns differnet
-	content if you've visited the site before:
-
- */
-
 package seshcookie
 // Copyright 2011 Bobby Powers. All rights reserved.
 // Use of this source code is governed by the MIT
@@ -40,7 +27,7 @@ import (
 // current session from an embedded http.Handler you can simply call:
 //
 //     seshcookie.Sessions.Get(req)
-var Sessions = new(RequestSessions)
+var Session = new(RequestSessions)
 
 type sessionResponseWriter struct {
 	http.ResponseWriter
@@ -216,6 +203,13 @@ func (s sessionResponseWriter) WriteHeader(code int) {
 	}
 write:
 	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s sessionResponseWriter) Write(body []byte) (int, os.Error) {
+	if s.wroteHeader == 0 {
+		s.WriteHeader(http.StatusOK)
+	}
+	return s.ResponseWriter.Write(body)
 }
 
 func (h *SessionHandler) getCookieSession(req *http.Request) map[string]interface{} {

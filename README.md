@@ -17,6 +17,7 @@ Perhaps the simplest example would be a handler which returns
 different content based on if the user has been to the site before or
 not:
 
+
 	package main
 	
 	import (
@@ -62,9 +63,10 @@ not:
 		}
 	}
 
+
 There is a more detailed example in example/ which uses seshcookie to
 enforce authentication for a particular resource.  In particular, it
-shows how you embed (or stack) multiple http.Handlers to get the
+shows how you can embed (or stack) multiple http.Handlers to get the
 behavior you want.
 
 license

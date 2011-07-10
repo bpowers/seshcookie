@@ -1,15 +1,13 @@
+package main
 // Copyright 2011 Bobby Powers. All rights reserved.
 // Use of this source code is governed by the MIT
 // license that can be found in the LICENSE file.
-package main
 
 import (
 	"log"
 	"http"
 	"seshcookie"
 )
-
-var sessions = new(seshcookie.RequestSessions)
 
 type AuthHandler struct {
 	http.Handler
@@ -18,7 +16,7 @@ type AuthHandler struct {
 
 func (h *AuthHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
-	session := sessions.Get(req)
+	session := seshcookie.Sessions.Get(req)
 	log.Printf("using session: %#v\n", session)
 
 	switch req.URL.Path {

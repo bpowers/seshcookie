@@ -1,7 +1,20 @@
+/*
+
+	The seshcookie package implements an http.Handler which
+	provides stateful sessions stored in cookies.  Because
+	session-state is transferred as part of the HTTP request,
+	state can be maintained seamlessly between server-restarts or
+	load balancing.
+
+	For example, here is a simple handler which returns differnet
+	content if you've visited the site before:
+
+ */
+
+package seshcookie
 // Copyright 2011 Bobby Powers. All rights reserved.
 // Use of this source code is governed by the MIT
 // license that can be found in the LICENSE file.
-package seshcookie
 
 import (
 	"http"
@@ -19,6 +32,15 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 )
+
+// if you don't need multiple independent seshcookie instances, you
+// can use this RequestSessions instance to manage & access your
+// sessions.  Simply use it as the final parameter in your call to
+// seshcookie.NewSessionHandler, and whenever you want to access the
+// current session from an embedded http.Handler you can simply call:
+//
+//     seshcookie.Sessions.Get(req)
+var Sessions = new(RequestSessions)
 
 type sessionResponseWriter struct {
 	http.ResponseWriter
@@ -142,6 +164,9 @@ func decodeCookie(encodedCookie string, key, iv []byte) (map[string]interface{},
 }
 
 func (s sessionResponseWriter) WriteHeader(code int) {
+
+	log.Printf("%d - %s\n", code, s.req.URL.Path)
+
 	if atomic.AddInt32(&s.wroteHeader, 1) == 1 {
 		origCookie, err := s.req.Cookie(s.h.CookieName)
 		var origCookieVal string
@@ -179,7 +204,7 @@ func (s sessionResponseWriter) WriteHeader(code int) {
 		}
 
 		if encoded == origCookieVal {
-			log.Println("not re-setting identical cookie")
+			//log.Println("not re-setting identical cookie")
 			goto write
 		}
 

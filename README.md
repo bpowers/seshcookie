@@ -10,12 +10,62 @@ similar service for Python webapps.  The cookies are AES encrypted in
 CBC mode, with the key and initialization vector derived from a
 user-specified string.
 
-example
--------
+examples
+--------
 
-The example uses seshcookie to enforce authentication for a particular
-resource.  In particular, it shows how you embed (or stack) multiple
-http.Handlers to get the behavior you want.
+Perhaps the simplest example would be a handler which returns
+different content based on if the user has been to the site before or
+not:
+
+	package main
+	
+	import (
+		"http"
+		"log"
+		"fmt"
+		"seshcookie"
+	)
+	
+	type VisitedHandler struct{}
+	
+	func (h *VisitedHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/" {
+			return
+		}
+	
+		session := seshcookie.Session.Get(req)
+	
+		count, ok := session["count"].(int)
+		if !ok {
+			session["count"] = 1
+		} else {
+			session["count"] = count + 1
+		}
+	
+		if count == 0 {
+			rw.Write([]byte("this is your first visit, welcome!"))
+		} else {
+			rw.Write([]byte(fmt.Sprintf("page view #%d", count)))
+		}
+	}
+	
+	func main() {
+		key := "some secret more secret than this"
+		http.Handle("/", seshcookie.NewSessionHandler(
+			&VisitedHandler{},
+			"session",
+			key,
+			seshcookie.Session))
+	
+		if err := http.ListenAndServe(":8080", nil); err != nil {
+			log.Fatal("ListenAndServe:", err)
+		}
+	}
+
+There is a more detailed example in example/ which uses seshcookie to
+enforce authentication for a particular resource.  In particular, it
+shows how you embed (or stack) multiple http.Handlers to get the
+behavior you want.
 
 license
 -------

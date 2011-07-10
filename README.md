@@ -72,4 +72,4 @@ behavior you want.
 license
 -------
 
-seshcookie is offered under the MIT license, see COPYING for details.
+seshcookie is offered under the MIT license, see LICENSE for details.

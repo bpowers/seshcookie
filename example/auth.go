@@ -16,7 +16,7 @@ type AuthHandler struct {
 
 func (h *AuthHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
-	session := seshcookie.Sessions.Get(req)
+	session := seshcookie.Session.Get(req)
 	log.Printf("using session: %#v\n", session)
 
 	switch req.URL.Path {
@@ -67,7 +67,7 @@ func main() {
 			map[string]string{"user": "password!"}},
 		"session",
 		"some known but hard to guess session key",
-		sessions))
+		seshcookie.Session))
 	if err != nil {
 		log.Printf("ListenAndServe:", err)
 	}

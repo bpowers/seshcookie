@@ -205,13 +205,6 @@ write:
 	s.ResponseWriter.WriteHeader(code)
 }
 
-func (s sessionResponseWriter) Write(body []byte) (int, os.Error) {
-	if s.wroteHeader == 0 {
-		s.WriteHeader(http.StatusOK)
-	}
-	return s.ResponseWriter.Write(body)
-}
-
 func (h *SessionHandler) getCookieSession(req *http.Request) map[string]interface{} {
 	cookie, err := req.Cookie(h.CookieName)
 	if err != nil {

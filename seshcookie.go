@@ -151,9 +151,6 @@ func decodeCookie(encodedCookie string, key, iv []byte) (map[string]interface{},
 }
 
 func (s sessionResponseWriter) WriteHeader(code int) {
-
-	log.Printf("%d - %s\n", code, s.req.URL.Path)
-
 	if atomic.AddInt32(&s.wroteHeader, 1) == 1 {
 		origCookie, err := s.req.Cookie(s.h.CookieName)
 		var origCookieVal string

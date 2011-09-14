@@ -9,24 +9,24 @@ import (
 	"testing"
 )
 
-func createKey() (key, iv []byte) {
+func createKey() []byte {
 	keySha1 := sha1.New()
 	keySha1.Write([]byte(time.UTC().String()))
 	keyBytes := keySha1.Sum()
-	return keyBytes[:16], keyBytes[4:]
+	return keyBytes[:16]
 }
 
 func TestRoundtrip(t *testing.T) {
-	key, iv := createKey()
+	key := createKey()
 
 	orig := map[string]interface{}{"a": 1, "b": "c", "d": 1.2}
 
-	encoded, err := encodeCookie(orig, key, iv)
+	encoded, err := encodeCookie(orig, key)
 	if err != nil {
 		t.Errorf("encodeCookie: %s", err)
 		return
 	}
-	decoded, err := decodeCookie(encoded, key, iv)
+	decoded, err := decodeCookie(encoded, key)
 	if err != nil {
 		t.Errorf("decodeCookie: %s", err)
 		return

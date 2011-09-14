@@ -16,6 +16,7 @@ import (
 	"crypto/sha1"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
 )
@@ -101,7 +102,7 @@ func decodeGob(encoded []byte) (map[string]interface{}, os.Error) {
 	return out, nil
 }
 
-func encodeCookie(content interface{}, key, iv []byte) (string, os.Error) {
+func encodeCookie(content interface{}, key []byte) (string, os.Error) {
 	sessionGob, err := encodeGob(content)
 	if err != nil {
 		return "", err
@@ -117,13 +118,24 @@ func encodeCookie(content interface{}, key, iv []byte) (string, os.Error) {
 	if err != nil {
 		return "", err
 	}
+
+	iv := make([]byte, aes.BlockSize)
+	if _, err := rand.Read(iv); err != nil {
+		return "", err
+	}
+
 	encrypter := cipher.NewCBCEncrypter(aesCipher, iv)
 	encrypter.CryptBlocks(sessionBytes, sessionBytes)
-	b64 := base64.StdEncoding.EncodeToString(sessionBytes)
-	return b64, nil
+
+	encodedBuf := bytes.NewBuffer(nil)
+	encodedWriter := base64.NewEncoder(base64.StdEncoding, encodedBuf)
+	encodedWriter.Write(iv)
+	encodedWriter.Write(sessionBytes)
+	encodedWriter.Close()
+	return encodedBuf.String(), nil
 }
 
-func decodeCookie(encodedCookie string, key, iv []byte) (map[string]interface{}, os.Error) {
+func decodeCookie(encodedCookie string, key []byte) (map[string]interface{}, os.Error) {
 	sessionBytes, err := base64.StdEncoding.DecodeString(encodedCookie)
 	if err != nil {
 		log.Printf("base64.Decodestring: %s\n", err)
@@ -134,6 +146,8 @@ func decodeCookie(encodedCookie string, key, iv []byte) (map[string]interface{},
 		log.Printf("aes.NewCipher: %s\n", err)
 		return nil, err
 	}
+	iv := sessionBytes[:aes.BlockSize]
+	sessionBytes = sessionBytes[aes.BlockSize:]
 	// decrypt in-place
 	decrypter := cipher.NewCBCDecrypter(aesCipher, iv)
 	decrypter.CryptBlocks(sessionBytes, sessionBytes)
@@ -181,7 +195,7 @@ func (s sessionResponseWriter) WriteHeader(code int) {
 			}
 			goto write
 		}
-		encoded, err := encodeCookie(session, s.h.key, s.h.iv)
+		encoded, err := encodeCookie(session, s.h.key)
 		if err != nil {
 			log.Printf("createCookie: %s\n", err)
 			goto write
@@ -209,7 +223,7 @@ func (h *SessionHandler) getCookieSession(req *http.Request) map[string]interfac
 			h.CookieName)
 		return map[string]interface{}{}
 	}
-	session, err := decodeCookie(cookie.Value, h.key, h.iv)
+	session, err := decodeCookie(cookie.Value, h.key)
 	if err != nil {
 		log.Printf("decodeCookie: %s\n", err)
 		return map[string]interface{}{}

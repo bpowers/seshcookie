@@ -27,7 +27,7 @@ var (
 	// whenever you want to access the current session from an
 	// embedded http.Handler you can simply call:
 	//
-	//     seshcookie.Sessions.Get(req)
+	//     seshcookie.Session.Get(req)
 	Session = new(RequestSessions)
 
 	// Hash validation of the decrypted cookie failed. Most likely

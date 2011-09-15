@@ -10,7 +10,6 @@ import (
 	"time"
 	"gob"
 	"bytes"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"crypto/sha1"
@@ -18,17 +17,28 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/binary"
 )
 
-// if you don't need multiple independent seshcookie instances, you
-// can use this RequestSessions instance to manage & access your
-// sessions.  Simply use it as the final parameter in your call to
-// seshcookie.NewSessionHandler, and whenever you want to access the
-// current session from an embedded http.Handler you can simply call:
-//
-//     seshcookie.Sessions.Get(req)
-var Session = new(RequestSessions)
+var (
+	// if you don't need multiple independent seshcookie
+	// instances, you can use this RequestSessions instance to
+	// manage & access your sessions.  Simply use it as the final
+	// parameter in your call to seshcookie.NewSessionHandler, and
+	// whenever you want to access the current session from an
+	// embedded http.Handler you can simply call:
+	//
+	//     seshcookie.Sessions.Get(req)
+	Session = new(RequestSessions)
+
+	// Hash validation of the decrypted cookie failed. Most likely
+	// the session was encoded with a different cookie than we're
+	// using to decode it, but its possible the client (or someone
+	// else) tried to modify the session.
+	HashError = os.NewError("Hash validation failed")
+
+	// The cookie is too short, so we must exit decoding early.
+	LenError = os.NewError("Bad cookie length")
+)
 
 type sessionResponseWriter struct {
 	http.ResponseWriter
@@ -44,7 +54,6 @@ type SessionHandler struct {
 	CookieName string
 	RS         *RequestSessions
 	key        []byte
-	iv         []byte
 }
 
 type RequestSessions struct {
@@ -81,14 +90,14 @@ func (rs *RequestSessions) Clear(req *http.Request) {
 	rs.m[req] = nil, false
 }
 
-func encodeGob(obj interface{}) (string, os.Error) {
+func encodeGob(obj interface{}) ([]byte, os.Error) {
 	buf := bytes.NewBuffer(nil)
 	enc := gob.NewEncoder(buf)
 	err := enc.Encode(obj)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return buf.String(), nil
+	return buf.Bytes(), nil
 }
 
 func decodeGob(encoded []byte) (map[string]interface{}, os.Error) {
@@ -102,60 +111,96 @@ func decodeGob(encoded []byte) (map[string]interface{}, os.Error) {
 	return out, nil
 }
 
+// encode uses the given block cipher (in CTR mode) to encrypt the
+// data, along with a hash, returning the iv and the ciphertext. What
+// is returned looks like:
+//
+//   iv + encrypted(sha1 + data)
+//
+func encode(block cipher.Block, data []byte) ([]byte, os.Error) {
+
+	buf := bytes.NewBuffer(nil)
+
+	dataHash := sha1.New()
+	dataHash.Write(data)
+
+	buf.Write(dataHash.Sum())
+	buf.Write(data)
+
+	session := buf.Bytes()
+
+	iv := make([]byte, block.BlockSize(), block.BlockSize()+len(session))
+	if _, err := rand.Read(iv); err != nil {
+		return nil, err
+	}
+
+	stream := cipher.NewCTR(block, iv)
+	stream.XORKeyStream(session, session)
+
+	return append(iv, session...), nil
+}
+
 func encodeCookie(content interface{}, key []byte) (string, os.Error) {
-	sessionGob, err := encodeGob(content)
+	encodedGob, err := encodeGob(content)
 	if err != nil {
 		return "", err
 	}
-	padLen := aes.BlockSize - (len(sessionGob)+4)%aes.BlockSize
-	buf := bytes.NewBuffer(nil)
-	var sessionLen int32 = (int32)(len(sessionGob))
-	binary.Write(buf, binary.BigEndian, sessionLen)
-	buf.WriteString(sessionGob)
-	buf.WriteString(strings.Repeat("\000", padLen))
-	sessionBytes := buf.Bytes()
+
 	aesCipher, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
 	}
 
-	iv := make([]byte, aes.BlockSize)
-	if _, err := rand.Read(iv); err != nil {
+	sessionBytes, err := encode(aesCipher, encodedGob)
+	if err != nil {
 		return "", err
 	}
 
-	encrypter := cipher.NewCBCEncrypter(aesCipher, iv)
-	encrypter.CryptBlocks(sessionBytes, sessionBytes)
+	return base64.StdEncoding.EncodeToString(sessionBytes), nil
+}
 
-	encodedBuf := bytes.NewBuffer(nil)
-	encodedWriter := base64.NewEncoder(base64.StdEncoding, encodedBuf)
-	encodedWriter.Write(iv)
-	encodedWriter.Write(sessionBytes)
-	encodedWriter.Close()
-	return encodedBuf.String(), nil
+// decode uses the given block cipher (in CTR mode) to decrypt the
+// data, and validate the hash.  If hash validation fails, an error is
+// returned.
+func decode(block cipher.Block, encoded []byte) ([]byte, os.Error) {
+	if len(encoded) < block.BlockSize() {
+		return nil, LenError
+	}
+
+	iv := encoded[:block.BlockSize()]
+	session := encoded[block.BlockSize():]
+
+	stream := cipher.NewCTR(block, iv)
+	stream.XORKeyStream(session, session)
+
+	expectedHash := session[:sha1.Size]
+	session = session[sha1.Size:]
+
+	sessionHash := sha1.New()
+	sessionHash.Write(session)
+
+	if !bytes.Equal(sessionHash.Sum(), expectedHash) {
+		return nil, HashError
+	}
+
+	return session, nil
 }
 
 func decodeCookie(encodedCookie string, key []byte) (map[string]interface{}, os.Error) {
 	sessionBytes, err := base64.StdEncoding.DecodeString(encodedCookie)
 	if err != nil {
-		log.Printf("base64.Decodestring: %s\n", err)
 		return nil, err
 	}
 	aesCipher, err := aes.NewCipher(key)
 	if err != nil {
-		log.Printf("aes.NewCipher: %s\n", err)
 		return nil, err
 	}
-	iv := sessionBytes[:aes.BlockSize]
-	sessionBytes = sessionBytes[aes.BlockSize:]
-	// decrypt in-place
-	decrypter := cipher.NewCBCDecrypter(aesCipher, iv)
-	decrypter.CryptBlocks(sessionBytes, sessionBytes)
 
-	buf := bytes.NewBuffer(sessionBytes)
-	var gobLen int32
-	binary.Read(buf, binary.BigEndian, &gobLen)
-	gobBytes := sessionBytes[4 : 4+gobLen]
+	gobBytes, err := decode(aesCipher, sessionBytes)
+	if err != nil {
+		return nil, err
+	}
+
 	session, err := decodeGob(gobBytes)
 	if err != nil {
 		log.Printf("decodeGob: %s\n", err)
@@ -247,8 +292,7 @@ func (h *SessionHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 func NewSessionHandler(handler http.Handler, cookieName, key string, rs *RequestSessions) *SessionHandler {
 	// sha1 sums are 20 bytes long.  we use the first 16 bytes as
-	// the aes key, and the last 16 bytes as the initialization
-	// vector (understanding that they overlap, of course).
+	// the aes key.
 	keySha1 := sha1.New()
 	keySha1.Write([]byte(key))
 	sum := keySha1.Sum()
@@ -256,7 +300,6 @@ func NewSessionHandler(handler http.Handler, cookieName, key string, rs *Request
 		Handler:    handler,
 		CookieName: cookieName,
 		RS:         rs,
-		key:        sum[:16],
-		iv:         sum[4:],
+		key:        sum[:aes.BlockSize],
 	}
 }

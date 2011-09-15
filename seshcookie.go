@@ -1,7 +1,7 @@
-package seshcookie
 // Copyright 2011 Bobby Powers. All rights reserved.
 // Use of this source code is governed by the MIT
 // license that can be found in the LICENSE file.
+package seshcookie
 
 import (
 	"http"
@@ -115,7 +115,7 @@ func decodeGob(encoded []byte) (map[string]interface{}, os.Error) {
 // data, along with a hash, returning the iv and the ciphertext. What
 // is returned looks like:
 //
-//   iv + encrypted(sha1 + data)
+//   iv + encrypted(salt + sha1 + data)
 //
 func encode(block cipher.Block, data []byte) ([]byte, os.Error) {
 
@@ -124,12 +124,18 @@ func encode(block cipher.Block, data []byte) ([]byte, os.Error) {
 	dataHash := sha1.New()
 	dataHash.Write(data)
 
+	salt := make([]byte, block.BlockSize())
+	if _, err := rand.Read(salt); err != nil {
+		return nil, err
+	}
+	buf.Write(salt)
+
 	buf.Write(dataHash.Sum())
 	buf.Write(data)
 
 	session := buf.Bytes()
 
-	iv := make([]byte, block.BlockSize(), block.BlockSize()+len(session))
+	iv := make([]byte, block.BlockSize(), 2*block.BlockSize()+len(session))
 	if _, err := rand.Read(iv); err != nil {
 		return nil, err
 	}
@@ -173,6 +179,8 @@ func decode(block cipher.Block, encoded []byte) ([]byte, os.Error) {
 	stream := cipher.NewCTR(block, iv)
 	stream.XORKeyStream(session, session)
 
+	// skip past the iv
+	session = session[block.BlockSize():]
 	expectedHash := session[:sha1.Size]
 	session = session[sha1.Size:]
 

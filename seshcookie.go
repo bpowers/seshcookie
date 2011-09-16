@@ -12,12 +12,17 @@ import (
 	"bytes"
 	"sync"
 	"sync/atomic"
+	"hash"
 	"crypto/sha1"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/hmac"
 	"encoding/base64"
 )
+
+// we want 16 byte blocks, for AES-128
+const blockSize = 16
 
 var (
 	// if you don't need multiple independent seshcookie
@@ -53,7 +58,8 @@ type SessionHandler struct {
 	// in.
 	CookieName string
 	RS         *RequestSessions
-	key        []byte
+	encKey     []byte
+	hmacKey    []byte
 }
 
 type RequestSessions struct {
@@ -115,27 +121,22 @@ func decodeGob(encoded []byte) (map[string]interface{}, os.Error) {
 // data, along with a hash, returning the iv and the ciphertext. What
 // is returned looks like:
 //
-//   iv + encrypted(salt + sha1 + data)
+//   encrypted(salt + sessionData) + iv + hmac
 //
-func encode(block cipher.Block, data []byte) ([]byte, os.Error) {
+func encode(block cipher.Block, hmac hash.Hash, data []byte) ([]byte, os.Error) {
 
 	buf := bytes.NewBuffer(nil)
-
-	dataHash := sha1.New()
-	dataHash.Write(data)
 
 	salt := make([]byte, block.BlockSize())
 	if _, err := rand.Read(salt); err != nil {
 		return nil, err
 	}
 	buf.Write(salt)
-
-	buf.Write(dataHash.Sum())
 	buf.Write(data)
 
 	session := buf.Bytes()
 
-	iv := make([]byte, block.BlockSize(), 2*block.BlockSize()+len(session))
+	iv := make([]byte, block.BlockSize())
 	if _, err := rand.Read(iv); err != nil {
 		return nil, err
 	}
@@ -143,21 +144,27 @@ func encode(block cipher.Block, data []byte) ([]byte, os.Error) {
 	stream := cipher.NewCTR(block, iv)
 	stream.XORKeyStream(session, session)
 
-	return append(iv, session...), nil
+	buf.Write(iv)
+	hmac.Write(buf.Bytes())
+	buf.Write(hmac.Sum())
+
+	return buf.Bytes(), nil
 }
 
-func encodeCookie(content interface{}, key []byte) (string, os.Error) {
+func encodeCookie(content interface{}, encKey, hmacKey []byte) (string, os.Error) {
 	encodedGob, err := encodeGob(content)
 	if err != nil {
 		return "", err
 	}
 
-	aesCipher, err := aes.NewCipher(key)
+	aesCipher, err := aes.NewCipher(encKey)
 	if err != nil {
 		return "", err
 	}
 
-	sessionBytes, err := encode(aesCipher, encodedGob)
+	hmacHash := hmac.NewSHA256(hmacKey)
+
+	sessionBytes, err := encode(aesCipher, hmacHash, encodedGob)
 	if err != nil {
 		return "", err
 	}
@@ -168,43 +175,44 @@ func encodeCookie(content interface{}, key []byte) (string, os.Error) {
 // decode uses the given block cipher (in CTR mode) to decrypt the
 // data, and validate the hash.  If hash validation fails, an error is
 // returned.
-func decode(block cipher.Block, encoded []byte) ([]byte, os.Error) {
-	if len(encoded) < block.BlockSize() {
+func decode(block cipher.Block, hmac hash.Hash, ciphertext []byte) ([]byte, os.Error) {
+	if len(ciphertext) < 2 * block.BlockSize() + hmac.Size() {
 		return nil, LenError
 	}
 
-	iv := encoded[:block.BlockSize()]
-	session := encoded[block.BlockSize():]
+	receivedHmac := ciphertext[len(ciphertext) - hmac.Size():]
+	ciphertext = ciphertext[:len(ciphertext) - hmac.Size()]
+
+	hmac.Write(ciphertext)
+	if !bytes.Equal(hmac.Sum(), receivedHmac) {
+		return nil, HashError
+	}
+
+	// split the iv and session bytes
+	iv := ciphertext[len(ciphertext) - block.BlockSize():]
+	session := ciphertext[:len(ciphertext) - block.BlockSize()]
 
 	stream := cipher.NewCTR(block, iv)
 	stream.XORKeyStream(session, session)
 
 	// skip past the iv
 	session = session[block.BlockSize():]
-	expectedHash := session[:sha1.Size]
-	session = session[sha1.Size:]
-
-	sessionHash := sha1.New()
-	sessionHash.Write(session)
-
-	if !bytes.Equal(sessionHash.Sum(), expectedHash) {
-		return nil, HashError
-	}
 
 	return session, nil
 }
 
-func decodeCookie(encodedCookie string, key []byte) (map[string]interface{}, os.Error) {
+func decodeCookie(encodedCookie string, encKey, hmacKey []byte) (map[string]interface{}, os.Error) {
 	sessionBytes, err := base64.StdEncoding.DecodeString(encodedCookie)
 	if err != nil {
 		return nil, err
 	}
-	aesCipher, err := aes.NewCipher(key)
+	aesCipher, err := aes.NewCipher(encKey)
 	if err != nil {
 		return nil, err
 	}
 
-	gobBytes, err := decode(aesCipher, sessionBytes)
+	hmacHash := hmac.NewSHA256(hmacKey)
+	gobBytes, err := decode(aesCipher, hmacHash, sessionBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +256,7 @@ func (s sessionResponseWriter) WriteHeader(code int) {
 			}
 			goto write
 		}
-		encoded, err := encodeCookie(session, s.h.key)
+		encoded, err := encodeCookie(session, s.h.encKey, s.h.hmacKey)
 		if err != nil {
 			log.Printf("createCookie: %s\n", err)
 			goto write
@@ -276,7 +284,7 @@ func (h *SessionHandler) getCookieSession(req *http.Request) map[string]interfac
 			h.CookieName)
 		return map[string]interface{}{}
 	}
-	session, err := decodeCookie(cookie.Value, h.key)
+	session, err := decodeCookie(cookie.Value, h.encKey, h.hmacKey)
 	if err != nil {
 		log.Printf("decodeCookie: %s\n", err)
 		return map[string]interface{}{}
@@ -301,13 +309,18 @@ func (h *SessionHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 func NewSessionHandler(handler http.Handler, cookieName, key string, rs *RequestSessions) *SessionHandler {
 	// sha1 sums are 20 bytes long.  we use the first 16 bytes as
 	// the aes key.
-	keySha1 := sha1.New()
-	keySha1.Write([]byte(key))
-	sum := keySha1.Sum()
+	encHash := sha1.New()
+	encHash.Write([]byte(key))
+	encHash.Write([]byte("-encryption"))
+	hmacHash := sha1.New()
+	hmacHash.Write([]byte(key))
+	hmacHash.Write([]byte("-hmac"))
+
 	return &SessionHandler{
 		Handler:    handler,
 		CookieName: cookieName,
 		RS:         rs,
-		key:        sum[:aes.BlockSize],
+		encKey:     encHash.Sum()[:blockSize],
+		hmacKey:    hmacHash.Sum()[:blockSize],
 	}
 }

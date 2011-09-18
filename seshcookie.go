@@ -49,6 +49,7 @@ type sessionResponseWriter struct {
 	http.ResponseWriter
 	h           *SessionHandler
 	req         *http.Request
+	// int32 so we can use the sync/atomic functions on it
 	wroteHeader int32
 }
 
@@ -65,6 +66,7 @@ type SessionHandler struct {
 type RequestSessions struct {
 	lk sync.Mutex
 	m  map[*http.Request]map[string]interface{}
+	hm map[*http.Request][]byte
 }
 
 func (rs *RequestSessions) Get(req *http.Request) map[string]interface{} {
@@ -78,15 +80,28 @@ func (rs *RequestSessions) Get(req *http.Request) map[string]interface{} {
 	return rs.m[req]
 }
 
-func (rs *RequestSessions) Set(req *http.Request, val map[string]interface{}) {
+func (rs *RequestSessions) getHash(req *http.Request) []byte {
+	rs.lk.Lock()
+	defer rs.lk.Unlock()
+
+	if rs.hm == nil {
+		return nil
+	}
+
+	return rs.hm[req]
+}
+
+func (rs *RequestSessions) Set(req *http.Request, val map[string]interface{}, gobHash []byte) {
 	rs.lk.Lock()
 	defer rs.lk.Unlock()
 
 	if rs.m == nil {
 		rs.m = map[*http.Request]map[string]interface{}{}
+		rs.hm = map[*http.Request][]byte{}
 	}
 
 	rs.m[req] = val
+	rs.hm[req] = gobHash
 }
 
 func (rs *RequestSessions) Clear(req *http.Request) {
@@ -151,25 +166,28 @@ func encode(block cipher.Block, hmac hash.Hash, data []byte) ([]byte, os.Error) 
 	return buf.Bytes(), nil
 }
 
-func encodeCookie(content interface{}, encKey, hmacKey []byte) (string, os.Error) {
+func encodeCookie(content interface{}, encKey, hmacKey []byte) (string, []byte, os.Error) {
 	encodedGob, err := encodeGob(content)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
+
+	gobHash := sha1.New()
+	gobHash.Write(encodedGob)
 
 	aesCipher, err := aes.NewCipher(encKey)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	hmacHash := hmac.NewSHA256(hmacKey)
 
 	sessionBytes, err := encode(aesCipher, hmacHash, encodedGob)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
-	return base64.StdEncoding.EncodeToString(sessionBytes), nil
+	return base64.StdEncoding.EncodeToString(sessionBytes), gobHash.Sum(), nil
 }
 
 // decode uses the given block cipher (in CTR mode) to decrypt the
@@ -201,28 +219,31 @@ func decode(block cipher.Block, hmac hash.Hash, ciphertext []byte) ([]byte, os.E
 	return session, nil
 }
 
-func decodeCookie(encodedCookie string, encKey, hmacKey []byte) (map[string]interface{}, os.Error) {
-	sessionBytes, err := base64.StdEncoding.DecodeString(encodedCookie)
+func decodeCookie(encoded string, encKey, hmacKey []byte) (map[string]interface{}, []byte, os.Error) {
+	sessionBytes, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	aesCipher, err := aes.NewCipher(encKey)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	hmacHash := hmac.NewSHA256(hmacKey)
 	gobBytes, err := decode(aesCipher, hmacHash, sessionBytes)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+
+	gobHash := sha1.New()
+	gobHash.Write(gobBytes)
 
 	session, err := decodeGob(gobBytes)
 	if err != nil {
 		log.Printf("decodeGob: %s\n", err)
-		return nil, err
+		return nil, nil, err
 	}
-	return session, nil
+	return session, gobHash.Sum(), nil
 }
 
 func (s sessionResponseWriter) WriteHeader(code int) {
@@ -256,13 +277,13 @@ func (s sessionResponseWriter) WriteHeader(code int) {
 			}
 			goto write
 		}
-		encoded, err := encodeCookie(session, s.h.encKey, s.h.hmacKey)
+		encoded, gobHash, err := encodeCookie(session, s.h.encKey, s.h.hmacKey)
 		if err != nil {
 			log.Printf("createCookie: %s\n", err)
 			goto write
 		}
 
-		if encoded == origCookieVal {
+		if bytes.Equal(gobHash, s.h.RS.getHash(s.req)) {
 			//log.Println("not re-setting identical cookie")
 			goto write
 		}
@@ -277,28 +298,28 @@ write:
 	s.ResponseWriter.WriteHeader(code)
 }
 
-func (h *SessionHandler) getCookieSession(req *http.Request) map[string]interface{} {
+func (h *SessionHandler) getCookieSession(req *http.Request) (map[string]interface{}, []byte) {
 	cookie, err := req.Cookie(h.CookieName)
 	if err != nil {
 		log.Printf("getCookieSesh: '%#v' not found\n",
 			h.CookieName)
-		return map[string]interface{}{}
+		return map[string]interface{}{}, nil
 	}
-	session, err := decodeCookie(cookie.Value, h.encKey, h.hmacKey)
+	session, gobHash, err := decodeCookie(cookie.Value, h.encKey, h.hmacKey)
 	if err != nil {
 		log.Printf("decodeCookie: %s\n", err)
-		return map[string]interface{}{}
+		return map[string]interface{}{}, nil
 	}
 
-	return session
+	return session, gobHash
 }
 
 func (h *SessionHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// get our session a little early, so that we can add our
 	// authentication information to it if we get some
-	session := h.getCookieSession(req)
+	session, gobHash := h.getCookieSession(req)
 
-	h.RS.Set(req, session)
+	h.RS.Set(req, session, gobHash)
 
 	sessionWriter := sessionResponseWriter{rw, h, req, 0}
 	h.Handler.ServeHTTP(sessionWriter, req)

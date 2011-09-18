@@ -4,6 +4,7 @@
 package seshcookie
 
 import (
+	"bytes"
 	"time"
 	"crypto/sha1"
 	"testing"
@@ -28,12 +29,12 @@ func TestRoundtrip(t *testing.T) {
 
 	orig := map[string]interface{}{"a": 1, "b": "c", "d": 1.2}
 
-	encoded, err := encodeCookie(orig, encKey, hmacKey)
+	encoded, encodedHash, err := encodeCookie(orig, encKey, hmacKey)
 	if err != nil {
 		t.Errorf("encodeCookie: %s", err)
 		return
 	}
-	decoded, err := decodeCookie(encoded, encKey, hmacKey)
+	decoded, decodedHash, err := decodeCookie(encoded, encKey, hmacKey)
 	if err != nil {
 		t.Errorf("decodeCookie: %s", err)
 		return
@@ -47,6 +48,11 @@ func TestRoundtrip(t *testing.T) {
 	if len(decoded) != 3 {
 		t.Errorf("len was %d, expected 3", len(decoded))
 		return
+	}
+
+	if !bytes.Equal(encodedHash, decodedHash) {
+		t.Errorf("encoded & decoded gob hash mismatches: %s, %s",
+			string(encodedHash), string(decodedHash))
 	}
 
 	for k, v := range orig {

@@ -18,7 +18,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/hmac"
-	"encoding/ascii85"
+	"encoding/base64"
 )
 
 // we want 16 byte blocks, for AES-128
@@ -187,9 +187,7 @@ func encodeCookie(content interface{}, encKey, hmacKey []byte) (string, []byte, 
 		return "", nil, err
 	}
 
-	encodedCookie := make([]byte, ascii85.MaxEncodedLen(len(sessionBytes)))
-	n := ascii85.Encode(encodedCookie, sessionBytes)
-	return string(encodedCookie[:n]), gobHash.Sum(), nil
+	return base64.StdEncoding.EncodeToString(sessionBytes), gobHash.Sum(), nil
 }
 
 // decode uses the given block cipher (in CTR mode) to decrypt the
@@ -222,12 +220,10 @@ func decode(block cipher.Block, hmac hash.Hash, ciphertext []byte) ([]byte, os.E
 }
 
 func decodeCookie(encoded string, encKey, hmacKey []byte) (map[string]interface{}, []byte, os.Error) {
-	sessionBytes := make([]byte, len(encoded))
-	n, _, err := ascii85.Decode(sessionBytes, []byte(encoded), true)
+	sessionBytes, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
 		return nil, nil, err
 	}
-	sessionBytes = sessionBytes[:n]
 	aesCipher, err := aes.NewCipher(encKey)
 	if err != nil {
 		return nil, nil, err
@@ -305,11 +301,8 @@ write:
 func (h *SessionHandler) getCookieSession(req *http.Request) (map[string]interface{}, []byte) {
 	cookie, err := req.Cookie(h.CookieName)
 	if err != nil {
-		log.Printf("getCookieSesh: '%#v' not found, know about:\n",
+		log.Printf("getCookieSesh: '%#v' not found\n",
 			h.CookieName)
-		for _, c := range req.Cookies() {
-			log.Printf("    %s", c.String())
-		}
 		return map[string]interface{}{}, nil
 	}
 	session, gobHash, err := decodeCookie(cookie.Value, h.encKey, h.hmacKey)

@@ -5,6 +5,7 @@ package seshcookie
 
 import (
 	"http"
+	"io"
 	"os"
 	"log"
 	"time"
@@ -143,7 +144,7 @@ func encode(block cipher.Block, hmac hash.Hash, data []byte) ([]byte, os.Error) 
 	buf := bytes.NewBuffer(nil)
 
 	salt := make([]byte, block.BlockSize())
-	if _, err := rand.Read(salt); err != nil {
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
 		return nil, err
 	}
 	buf.Write(salt)

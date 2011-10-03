@@ -19,6 +19,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/hmac"
+	"crypto/subtle"
 	"encoding/base64"
 )
 
@@ -203,7 +204,7 @@ func decode(block cipher.Block, hmac hash.Hash, ciphertext []byte) ([]byte, os.E
 	ciphertext = ciphertext[:len(ciphertext) - hmac.Size()]
 
 	hmac.Write(ciphertext)
-	if !bytes.Equal(hmac.Sum(), receivedHmac) {
+	if subtle.ConstantTimeCompare(hmac.Sum(), receivedHmac) != 1 {
 		return nil, HashError
 	}
 

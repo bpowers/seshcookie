@@ -34,6 +34,8 @@
 				session["count"] = count + 1
 			}
 		
+			rw.Header().Set("Content-Type", "text/plain")
+			rw.WriteHeader(200)
 			if count == 0 {
 				rw.Write([]byte("this is your first visit, welcome!"))
 			} else {
@@ -42,7 +44,7 @@
 		}
 		
 		func main() {
-			key := "some secret more secret than this"
+			key := "session key, preferably a sequence of data from /dev/urandom"
 			http.Handle("/", seshcookie.NewSessionHandler(
 				&VisitedHandler{},
 				"session",

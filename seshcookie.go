@@ -66,12 +66,13 @@ type SessionHandler struct {
 
 type RequestSessions struct {
 	Secure bool // only send session over HTTPS
-	// if MaxAge <= 0, the cookie and session will never expire.
-	// if MaxAge > 0, the length of time in seconds (from this
-	// response) that the session is considered valid for.
-	MaxAge int
 	lk     sync.Mutex
 	m      map[*http.Request]map[string]interface{}
+	// stores a hash of the serialized session (the gob) that we
+	// received with the start of the request.  Before setting a
+	// cookie for the reply, check to see if the session has
+	// actually changed.  If it hasn't, then we don't need to send
+	// a new cookie.
 	hm     map[*http.Request][]byte
 }
 

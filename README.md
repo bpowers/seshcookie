@@ -7,8 +7,7 @@ is transferred as part of the HTTP request, state can be maintained
 seamlessly between server-restarts or load balancing.  It's inspired
 by [Beaker](http://pypi.python.org/pypi/Beaker), which provides a
 similar service for Python webapps.  The cookies are AES encrypted in
-CBC mode, with the key and initialization vector derived from a
-user-specified string.
+CTR mode, with the key derived from a user-specified string.
 
 examples
 --------

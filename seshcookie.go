@@ -82,6 +82,9 @@ func (rs *RequestSessions) Get(req *http.Request) map[string]interface{} {
 	defer rs.lk.Unlock()
 
 	if rs.m == nil {
+		log.Print("seshcookie: warning! trying to get session " +
+			"data for unknown request. Perhaps your handler " +
+			"isn't wrapped by a SessionHandler?")
 		return nil
 	}
 

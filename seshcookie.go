@@ -65,15 +65,16 @@ type SessionHandler struct {
 }
 
 type RequestSessions struct {
-	Secure bool // only send session over HTTPS
-	lk     sync.Mutex
-	m      map[*http.Request]map[string]interface{}
+	Secure   bool // only send session over HTTPS
+	HttpOnly bool // don't allow javascript to access cookie
+	lk       sync.Mutex
+	m        map[*http.Request]map[string]interface{}
 	// stores a hash of the serialized session (the gob) that we
 	// received with the start of the request.  Before setting a
 	// cookie for the reply, check to see if the session has
 	// actually changed.  If it hasn't, then we don't need to send
 	// a new cookie.
-	hm     map[*http.Request][]byte
+	hm map[*http.Request][]byte
 }
 
 func (rs *RequestSessions) Get(req *http.Request) map[string]interface{} {
@@ -299,7 +300,7 @@ func (s sessionResponseWriter) WriteHeader(code int) {
 		cookie.Name = s.h.CookieName
 		cookie.Value = encoded
 		cookie.Path = s.h.CookiePath
-		cookie.HttpOnly = true
+		cookie.HttpOnly = s.h.RS.Secure
 		cookie.Secure = s.h.RS.Secure
 		http.SetCookie(s, &cookie)
 	}

@@ -100,9 +100,8 @@ func main() {
 	// redirected to the login page.
 	handler := seshcookie.NewSessionHandler(
 		&AuthHandler{http.FileServer(contentDir), userDb},
-		"session",
 		"session key, preferably a sequence of data from /dev/urandom",
-		seshcookie.Session)
+		nil)
 
 	if err := http.ListenAndServe(":8080", handler); err != nil {
 		log.Printf("ListenAndServe:", err)

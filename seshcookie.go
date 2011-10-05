@@ -57,15 +57,19 @@ type sessionResponseWriter struct {
 
 type SessionHandler struct {
 	http.Handler
-	// The name of the cookie our encoded session will be stored
-	// in.
-	CookieName string
+	CookieName string // name of the cookie to store our session in
+	CookiePath string // resource path the cookie is valid for
 	RS         *RequestSessions
 	encKey     []byte
 	hmacKey    []byte
 }
 
 type RequestSessions struct {
+	Secure     bool   // only send session over HTTPS
+	// if MaxAge <= 0, the cookie and session will never expire.
+	// if MaxAge > 0, the length of time in seconds (from this
+	// response) that the session is considered valid for.
+	MaxAge     int
 	lk sync.Mutex
 	m  map[*http.Request]map[string]interface{}
 	hm map[*http.Request][]byte
@@ -293,7 +297,9 @@ func (s sessionResponseWriter) WriteHeader(code int) {
 		var cookie http.Cookie
 		cookie.Name = s.h.CookieName
 		cookie.Value = encoded
-		cookie.Path = "/"
+		cookie.Path = s.h.CookiePath
+		cookie.HttpOnly = true
+		cookie.Secure = s.h.RS.Secure
 		http.SetCookie(s, &cookie)
 	}
 write:
@@ -329,7 +335,7 @@ func (h *SessionHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	h.RS.Clear(req)
 }
 
-func NewSessionHandler(handler http.Handler, cookieName, key string, rs *RequestSessions) *SessionHandler {
+func NewSessionHandler(handler http.Handler, key string, rs *RequestSessions) *SessionHandler {
 	// sha1 sums are 20 bytes long.  we use the first 16 bytes as
 	// the aes key.
 	encHash := sha1.New()
@@ -339,9 +345,16 @@ func NewSessionHandler(handler http.Handler, cookieName, key string, rs *Request
 	hmacHash.Write([]byte(key))
 	hmacHash.Write([]byte("-hmac"))
 
+	// if the user hasn't specified a session handler, use the
+	// package's default one
+	if rs == nil {
+		rs = Session
+	}
+
 	return &SessionHandler{
 		Handler:    handler,
-		CookieName: cookieName,
+		CookieName: "session",
+		CookiePath: "/",
 		RS:         rs,
 		encKey:     encHash.Sum()[:blockSize],
 		hmacKey:    hmacHash.Sum()[:blockSize],

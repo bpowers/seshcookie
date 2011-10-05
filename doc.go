@@ -27,16 +27,13 @@
 		
 			session := seshcookie.Session.Get(req)
 		
-			count, ok := session["count"].(int)
-			if !ok {
-				session["count"] = 1
-			} else {
-				session["count"] = count + 1
-			}
+			count, _ := session["count"].(int)
+			count += 1
+			session["count"] = count
 		
 			rw.Header().Set("Content-Type", "text/plain")
 			rw.WriteHeader(200)
-			if count == 0 {
+			if count == 1 {
 				rw.Write([]byte("this is your first visit, welcome!"))
 			} else {
 				rw.Write([]byte(fmt.Sprintf("page view #%d", count)))
@@ -47,9 +44,8 @@
 			key := "session key, preferably a sequence of data from /dev/urandom"
 			http.Handle("/", seshcookie.NewSessionHandler(
 				&VisitedHandler{},
-				"session",
 				key,
-				seshcookie.Session))
+				nil))
 		
 			if err := http.ListenAndServe(":8080", nil); err != nil {
 				log.Fatal("ListenAndServe:", err)

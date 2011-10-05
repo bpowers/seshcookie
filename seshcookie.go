@@ -35,7 +35,7 @@ var (
 	// embedded http.Handler you can simply call:
 	//
 	//     seshcookie.Session.Get(req)
-	Session = new(RequestSessions)
+	Session = &RequestSessions{HttpOnly:true}
 
 	// Hash validation of the decrypted cookie failed. Most likely
 	// the session was encoded with a different cookie than we're
@@ -65,8 +65,8 @@ type SessionHandler struct {
 }
 
 type RequestSessions struct {
-	Secure   bool // only send session over HTTPS
 	HttpOnly bool // don't allow javascript to access cookie
+	Secure   bool // only send session over HTTPS
 	lk       sync.Mutex
 	m        map[*http.Request]map[string]interface{}
 	// stores a hash of the serialized session (the gob) that we
@@ -300,7 +300,7 @@ func (s sessionResponseWriter) WriteHeader(code int) {
 		cookie.Name = s.h.CookieName
 		cookie.Value = encoded
 		cookie.Path = s.h.CookiePath
-		cookie.HttpOnly = s.h.RS.Secure
+		cookie.HttpOnly = s.h.RS.HttpOnly
 		cookie.Secure = s.h.RS.Secure
 		http.SetCookie(s, &cookie)
 	}

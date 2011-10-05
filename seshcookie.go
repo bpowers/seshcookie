@@ -49,8 +49,8 @@ var (
 
 type sessionResponseWriter struct {
 	http.ResponseWriter
-	h           *SessionHandler
-	req         *http.Request
+	h   *SessionHandler
+	req *http.Request
 	// int32 so we can use the sync/atomic functions on it
 	wroteHeader int32
 }
@@ -65,14 +65,14 @@ type SessionHandler struct {
 }
 
 type RequestSessions struct {
-	Secure     bool   // only send session over HTTPS
+	Secure bool // only send session over HTTPS
 	// if MaxAge <= 0, the cookie and session will never expire.
 	// if MaxAge > 0, the length of time in seconds (from this
 	// response) that the session is considered valid for.
-	MaxAge     int
-	lk sync.Mutex
-	m  map[*http.Request]map[string]interface{}
-	hm map[*http.Request][]byte
+	MaxAge int
+	lk     sync.Mutex
+	m      map[*http.Request]map[string]interface{}
+	hm     map[*http.Request][]byte
 }
 
 func (rs *RequestSessions) Get(req *http.Request) map[string]interface{} {
@@ -200,12 +200,12 @@ func encodeCookie(content interface{}, encKey, hmacKey []byte) (string, []byte, 
 // data, and validate the hash.  If hash validation fails, an error is
 // returned.
 func decode(block cipher.Block, hmac hash.Hash, ciphertext []byte) ([]byte, os.Error) {
-	if len(ciphertext) < 2 * block.BlockSize() + hmac.Size() {
+	if len(ciphertext) < 2*block.BlockSize()+hmac.Size() {
 		return nil, LenError
 	}
 
-	receivedHmac := ciphertext[len(ciphertext) - hmac.Size():]
-	ciphertext = ciphertext[:len(ciphertext) - hmac.Size()]
+	receivedHmac := ciphertext[len(ciphertext)-hmac.Size():]
+	ciphertext = ciphertext[:len(ciphertext)-hmac.Size()]
 
 	hmac.Write(ciphertext)
 	if subtle.ConstantTimeCompare(hmac.Sum(), receivedHmac) != 1 {
@@ -213,8 +213,8 @@ func decode(block cipher.Block, hmac hash.Hash, ciphertext []byte) ([]byte, os.E
 	}
 
 	// split the iv and session bytes
-	iv := ciphertext[len(ciphertext) - block.BlockSize():]
-	session := ciphertext[:len(ciphertext) - block.BlockSize()]
+	iv := ciphertext[len(ciphertext)-block.BlockSize():]
+	session := ciphertext[:len(ciphertext)-block.BlockSize()]
 
 	stream := cipher.NewCTR(block, iv)
 	stream.XORKeyStream(session, session)

@@ -314,8 +314,8 @@ write:
 func (h *SessionHandler) getCookieSession(req *http.Request) (map[string]interface{}, []byte) {
 	cookie, err := req.Cookie(h.CookieName)
 	if err != nil {
-		log.Printf("getCookieSesh: '%#v' not found\n",
-			h.CookieName)
+		//log.Printf("getCookieSesh: '%#v' not found\n",
+		//	h.CookieName)
 		return map[string]interface{}{}, nil
 	}
 	session, gobHash, err := decodeCookie(cookie.Value, h.encKey, h.hmacKey)

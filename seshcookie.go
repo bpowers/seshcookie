@@ -274,7 +274,7 @@ func (s sessionResponseWriter) WriteHeader(code int) {
 			// assume the user wants us to clear the
 			// session
 			if origCookieVal != "" {
-				log.Println("clearing cookie")
+				//log.Println("clearing cookie")
 				var cookie http.Cookie
 				cookie.Name = s.h.CookieName
 				cookie.Value = ""
@@ -283,8 +283,6 @@ func (s sessionResponseWriter) WriteHeader(code int) {
 				// with an expiration time in the past
 				cookie.Expires = *time.SecondsToUTC(0)
 				http.SetCookie(s, &cookie)
-			} else {
-				log.Println("not setting empty cookie")
 			}
 			goto write
 		}

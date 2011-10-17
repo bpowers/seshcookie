@@ -4,16 +4,8 @@
 package seshcookie
 
 import (
-	"http"
-	"io"
-	"os"
-	"log"
-	"time"
-	"gob"
+	"bufio"
 	"bytes"
-	"sync"
-	"sync/atomic"
-	"hash"
 	"crypto/sha1"
 	"crypto/aes"
 	"crypto/cipher"
@@ -21,6 +13,16 @@ import (
 	"crypto/hmac"
 	"crypto/subtle"
 	"encoding/base64"
+	"gob"
+	"hash"
+	"http"
+	"io"
+	"log"
+	"net"
+	"os"
+	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // we want 16 byte blocks, for AES-128
@@ -307,6 +309,11 @@ func (s sessionResponseWriter) WriteHeader(code int) {
 	}
 write:
 	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s sessionResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, os.Error) {
+	hijacker, _ := s.ResponseWriter.(http.Hijacker)
+	return hijacker.Hijack()
 }
 
 func (h *SessionHandler) getCookieSession(req *http.Request) (map[string]interface{}, []byte) {

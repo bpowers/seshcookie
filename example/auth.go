@@ -4,8 +4,12 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
+	"os"
+	"runtime"
+	"runtime/pprof"
 	"seshcookie"
 )
 
@@ -26,6 +30,8 @@ type AuthHandler struct {
 	http.Handler
 	Users map[string]string
 }
+
+var memprofile = flag.String("memprofile", "", "write memory profile to this file")
 
 // Restricts resource access to only those who have been logged in.
 // In order to provide a mechanism for logging in (and logging back
@@ -70,6 +76,20 @@ func (h *AuthHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		delete(session, "user")
 		http.Redirect(rw, req, "/login", http.StatusFound)
 		return
+	// for debugging purposes, allow us to dump a memory profile
+	// without being logged in
+	case "/dump":
+		runtime.GC()
+		if *memprofile != "" {
+			f, err := os.Create(*memprofile)
+			if err != nil {
+				log.Fatal(err)
+			}
+			pprof.WriteHeapProfile(f)
+			f.Close()
+			return
+		}
+		return
 	}
 
 	if _, ok := session["user"]; !ok {
@@ -81,6 +101,8 @@ func (h *AuthHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 }
 
 func main() {
+	flag.Parse()
+
 	// Here we have 3 levels of handlers:
 	// 1 - session handler
 	// 2 - auth handler

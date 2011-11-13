@@ -6,20 +6,20 @@ package seshcookie
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha1"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha1"
+	"crypto/hmac"
 	"crypto/subtle"
 	"encoding/base64"
-	"errors"
 	"gob"
 	"hash"
 	"http"
 	"io"
 	"log"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,16 +37,16 @@ var (
 	// embedded http.Handler you can simply call:
 	//
 	//     seshcookie.Session.Get(req)
-	Session = &RequestSessions{HttpOnly: true}
+	Session = &RequestSessions{HttpOnly:true}
 
 	// Hash validation of the decrypted cookie failed. Most likely
 	// the session was encoded with a different cookie than we're
 	// using to decode it, but its possible the client (or someone
 	// else) tried to modify the session.
-	HashError = errors.New("Hash validation failed")
+	HashError = os.NewError("Hash validation failed")
 
 	// The cookie is too short, so we must exit decoding early.
-	LenError = errors.New("Bad cookie length")
+	LenError = os.NewError("Bad cookie length")
 )
 
 type sessionResponseWriter struct {
@@ -121,11 +121,11 @@ func (rs *RequestSessions) Clear(req *http.Request) {
 	rs.lk.Lock()
 	defer rs.lk.Unlock()
 
-	delete(rs.m, req)
-	delete(rs.hm, req)
+	rs.m[req] = nil, false
+	rs.hm[req] = nil, false
 }
 
-func encodeGob(obj interface{}) ([]byte, error) {
+func encodeGob(obj interface{}) ([]byte, os.Error) {
 	buf := bytes.NewBuffer(nil)
 	enc := gob.NewEncoder(buf)
 	err := enc.Encode(obj)
@@ -135,7 +135,7 @@ func encodeGob(obj interface{}) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func decodeGob(encoded []byte) (map[string]interface{}, error) {
+func decodeGob(encoded []byte) (map[string]interface{}, os.Error) {
 	buf := bytes.NewBuffer(encoded)
 	dec := gob.NewDecoder(buf)
 	var out map[string]interface{}
@@ -152,7 +152,7 @@ func decodeGob(encoded []byte) (map[string]interface{}, error) {
 //
 //   encrypted(salt + sessionData) + iv + hmac
 //
-func encode(block cipher.Block, hmac hash.Hash, data []byte) ([]byte, error) {
+func encode(block cipher.Block, hmac hash.Hash, data []byte) ([]byte, os.Error) {
 
 	buf := bytes.NewBuffer(nil)
 
@@ -180,7 +180,7 @@ func encode(block cipher.Block, hmac hash.Hash, data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func encodeCookie(content interface{}, encKey, hmacKey []byte) (string, []byte, error) {
+func encodeCookie(content interface{}, encKey, hmacKey []byte) (string, []byte, os.Error) {
 	encodedGob, err := encodeGob(content)
 	if err != nil {
 		return "", nil, err
@@ -207,7 +207,7 @@ func encodeCookie(content interface{}, encKey, hmacKey []byte) (string, []byte, 
 // decode uses the given block cipher (in CTR mode) to decrypt the
 // data, and validate the hash.  If hash validation fails, an error is
 // returned.
-func decode(block cipher.Block, hmac hash.Hash, ciphertext []byte) ([]byte, error) {
+func decode(block cipher.Block, hmac hash.Hash, ciphertext []byte) ([]byte, os.Error) {
 	if len(ciphertext) < 2*block.BlockSize()+hmac.Size() {
 		return nil, LenError
 	}
@@ -233,7 +233,7 @@ func decode(block cipher.Block, hmac hash.Hash, ciphertext []byte) ([]byte, erro
 	return session, nil
 }
 
-func decodeCookie(encoded string, encKey, hmacKey []byte) (map[string]interface{}, []byte, error) {
+func decodeCookie(encoded string, encKey, hmacKey []byte) (map[string]interface{}, []byte, os.Error) {
 	sessionBytes, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
 		return nil, nil, err
@@ -312,7 +312,7 @@ write:
 	s.ResponseWriter.WriteHeader(code)
 }
 
-func (s sessionResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+func (s sessionResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, os.Error) {
 	hijacker, _ := s.ResponseWriter.(http.Hijacker)
 	return hijacker.Hijack()
 }

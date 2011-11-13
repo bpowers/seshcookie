@@ -122,6 +122,7 @@ func (rs *RequestSessions) Clear(req *http.Request) {
 	defer rs.lk.Unlock()
 
 	delete(rs.m, req)
+	delete(rs.hm, req)
 }
 
 func encodeGob(obj interface{}) ([]byte, error) {
@@ -338,11 +339,10 @@ func (h *SessionHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	session, gobHash := h.getCookieSession(req)
 
 	h.RS.Set(req, session, gobHash)
+	defer h.RS.Clear(req)
 
 	sessionWriter := sessionResponseWriter{rw, h, req, 0}
 	h.Handler.ServeHTTP(sessionWriter, req)
-
-	h.RS.Clear(req)
 }
 
 func NewSessionHandler(handler http.Handler, key string, rs *RequestSessions) *SessionHandler {

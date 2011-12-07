@@ -5,21 +5,21 @@ package seshcookie
 
 import (
 	"bytes"
-	"time"
 	"crypto/sha1"
 	"testing"
+	"time"
 )
 
 func createKey() (encKey, hmacKey []byte) {
 	encSha1 := sha1.New()
-	encSha1.Write([]byte(time.UTC().String()))
+	encSha1.Write([]byte(time.Now().UTC().String()))
 	encSha1.Write([]byte("-enc"))
-	encKey = encSha1.Sum()[:blockSize]
+	encKey = encSha1.Sum(nil)[:blockSize]
 
 	hmacSha1 := sha1.New()
-	hmacSha1.Write([]byte(time.UTC().String()))
+	hmacSha1.Write([]byte(time.Now().UTC().String()))
 	hmacSha1.Write([]byte("-hmac"))
-	hmacKey = hmacSha1.Sum()[:blockSize]
+	hmacKey = hmacSha1.Sum(nil)[:blockSize]
 
 	return
 }

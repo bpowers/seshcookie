@@ -175,7 +175,7 @@ func encode(block cipher.Block, hmac hash.Hash, data []byte) ([]byte, error) {
 
 	buf.Write(iv)
 	hmac.Write(buf.Bytes())
-	buf.Write(hmac.Sum())
+	buf.Write(hmac.Sum(nil))
 
 	return buf.Bytes(), nil
 }
@@ -201,7 +201,7 @@ func encodeCookie(content interface{}, encKey, hmacKey []byte) (string, []byte, 
 		return "", nil, err
 	}
 
-	return base64.StdEncoding.EncodeToString(sessionBytes), gobHash.Sum(), nil
+	return base64.StdEncoding.EncodeToString(sessionBytes), gobHash.Sum(nil), nil
 }
 
 // decode uses the given block cipher (in CTR mode) to decrypt the
@@ -216,7 +216,7 @@ func decode(block cipher.Block, hmac hash.Hash, ciphertext []byte) ([]byte, erro
 	ciphertext = ciphertext[:len(ciphertext)-hmac.Size()]
 
 	hmac.Write(ciphertext)
-	if subtle.ConstantTimeCompare(hmac.Sum(), receivedHmac) != 1 {
+	if subtle.ConstantTimeCompare(hmac.Sum(nil), receivedHmac) != 1 {
 		return nil, HashError
 	}
 
@@ -257,7 +257,7 @@ func decodeCookie(encoded string, encKey, hmacKey []byte) (map[string]interface{
 		log.Printf("decodeGob: %s\n", err)
 		return nil, nil, err
 	}
-	return session, gobHash.Sum(), nil
+	return session, gobHash.Sum(nil), nil
 }
 
 func (s sessionResponseWriter) WriteHeader(code int) {
@@ -284,7 +284,7 @@ func (s sessionResponseWriter) WriteHeader(code int) {
 				cookie.Path = "/"
 				// a cookie is expired by setting it
 				// with an expiration time in the past
-				cookie.Expires = *time.SecondsToUTC(0)
+				cookie.Expires = time.Unix(0, 0).UTC()
 				http.SetCookie(s, &cookie)
 			}
 			goto write
@@ -366,7 +366,7 @@ func NewSessionHandler(handler http.Handler, key string, rs *RequestSessions) *S
 		CookieName: "session",
 		CookiePath: "/",
 		RS:         rs,
-		encKey:     encHash.Sum()[:blockSize],
-		hmacKey:    hmacHash.Sum()[:blockSize],
+		encKey:     encHash.Sum(nil)[:blockSize],
+		hmacKey:    hmacHash.Sum(nil)[:blockSize],
 	}
 }

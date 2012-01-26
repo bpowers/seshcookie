@@ -11,6 +11,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/gob"
@@ -194,7 +195,7 @@ func encodeCookie(content interface{}, encKey, hmacKey []byte) (string, []byte, 
 		return "", nil, err
 	}
 
-	hmacHash := hmac.NewSHA256(hmacKey)
+	hmacHash := hmac.New(sha256.New, hmacKey)
 
 	sessionBytes, err := encode(aesCipher, hmacHash, encodedGob)
 	if err != nil {
@@ -243,7 +244,7 @@ func decodeCookie(encoded string, encKey, hmacKey []byte) (map[string]interface{
 		return nil, nil, err
 	}
 
-	hmacHash := hmac.NewSHA256(hmacKey)
+	hmacHash := hmac.New(sha256.New, hmacKey)
 	gobBytes, err := decode(aesCipher, hmacHash, sessionBytes)
 	if err != nil {
 		return nil, nil, err

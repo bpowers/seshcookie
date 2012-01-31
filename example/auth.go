@@ -4,8 +4,8 @@
 package main
 
 import (
-	"log"
 	"http"
+	"log"
 	"seshcookie"
 )
 
@@ -67,7 +67,7 @@ func (h *AuthHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		http.Redirect(rw, req, "/", http.StatusFound)
 		return
 	case "/logout":
-		session["user"] = "", false
+		delete(session, "user")
 		http.Redirect(rw, req, "/login", http.StatusFound)
 		return
 	}

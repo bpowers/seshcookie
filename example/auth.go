@@ -4,9 +4,9 @@
 package main
 
 import (
+	"github.com/bpowers/seshcookie"
 	"log"
 	"net/http"
-	"seshcookie"
 )
 
 var contentDir http.Dir = "./secured"

@@ -328,7 +328,9 @@ func (h *SessionHandler) getCookieSession(req *http.Request) (map[string]interfa
 	}
 	session, gobHash, err := decodeCookie(cookie.Value, h.encKey, h.hmacKey)
 	if err != nil {
-		log.Printf("decodeCookie: %s\n", err)
+		// this almost always just means that the user doesn't
+		// have a valid login.
+		//log.Printf("decodeCookie: %s\n", err)
 		return map[string]interface{}{}, nil
 	}
 

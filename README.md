@@ -20,10 +20,10 @@ not:
 	package main
 	
 	import (
-		"http"
+		"net/http"
 		"log"
 		"fmt"
-		"seshcookie"
+		"github.com/bpowers/seshcookie"
 	)
 	
 	type VisitedHandler struct{}

@@ -262,6 +262,11 @@ func decodeCookie(encoded string, encKey, hmacKey []byte) (map[string]interface{
 	return session, gobHash.Sum(nil), nil
 }
 
+func (s sessionResponseWriter) Write(data []byte) (int, error) {
+	s.WriteHeader(http.StatusOK)
+	return s.ResponseWriter.Write(data)
+}
+
 func (s sessionResponseWriter) WriteHeader(code int) {
 	if atomic.AddInt32(&s.wroteHeader, 1) == 1 {
 		origCookie, err := s.req.Cookie(s.h.CookieName)

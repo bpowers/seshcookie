@@ -262,12 +262,17 @@ func decodeCookie(encoded string, encKey, hmacKey []byte) (map[string]interface{
 	return session, gobHash.Sum(nil), nil
 }
 
-func (s sessionResponseWriter) Write(data []byte) (int, error) {
-	s.WriteHeader(http.StatusOK)
+func (s *sessionResponseWriter) Write(data []byte) (int, error) {
+	if atomic.LoadInt32(&s.wroteHeader) == 0 {
+		s.WriteHeader(http.StatusOK)
+	}
 	return s.ResponseWriter.Write(data)
 }
 
-func (s sessionResponseWriter) WriteHeader(code int) {
+func (s *sessionResponseWriter) WriteHeader(code int) {
+	// TODO: this is racey if WriteHeader is called from 2
+	// different goroutines.  I think so is the underlying
+	// ResponseWriter from net.http, but it is worth checking.
 	if atomic.AddInt32(&s.wroteHeader, 1) == 1 {
 		origCookie, err := s.req.Cookie(s.h.CookieName)
 		var origCookieVal string
@@ -319,7 +324,7 @@ write:
 	s.ResponseWriter.WriteHeader(code)
 }
 
-func (s sessionResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+func (s *sessionResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	hijacker, _ := s.ResponseWriter.(http.Hijacker)
 	return hijacker.Hijack()
 }
@@ -350,7 +355,7 @@ func (h *SessionHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	h.RS.Set(req, session, gobHash)
 	defer h.RS.Clear(req)
 
-	sessionWriter := sessionResponseWriter{rw, h, req, 0}
+	sessionWriter := &sessionResponseWriter{rw, h, req, 0}
 	h.Handler.ServeHTTP(sessionWriter, req)
 }
 

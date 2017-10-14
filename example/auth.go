@@ -41,7 +41,7 @@ type AuthHandler struct {
 // session map and redirecting to "/login"
 func (h *AuthHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
-	session := seshcookie.GetSession(req)
+	session := seshcookie.GetSession(req.Context())
 	log.Printf("using session: %#v\n", session)
 
 	switch req.URL.Path {

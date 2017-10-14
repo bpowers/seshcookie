@@ -34,7 +34,7 @@ not:
 			return
 		}
 	
-		session := seshcookie.GetSession(req)
+		session := seshcookie.GetSession(req.Context())
 	
 		count, _ := session["count"].(int)
 		count += 1

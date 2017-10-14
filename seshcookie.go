@@ -79,10 +79,13 @@ type Handler struct {
 	hmacKey    []byte
 }
 
-// A wrapper to get a seshcookie session out of an HTTP request's
-// Context.
-func GetSession(req *http.Request) Session {
-	return req.Context().Value(sessionKey).(Session)
+// A wrapper to get a seshcookie session out of a Context.
+//
+// By only providing a 'Get' API, we ensure that clients can't
+// mistakenly set something unexpected on the given context in place
+// of the session.
+func GetSession(ctx context.Context) Session {
+	return ctx.Value(sessionKey).(Session)
 }
 
 func encodeGob(obj interface{}) ([]byte, error) {

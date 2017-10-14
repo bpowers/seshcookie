@@ -11,8 +11,9 @@
 	user-specified string.  This makes seshcookie reliable and
 	secure.
 
-	A simple example is a handler letting users know how many
-	times they have visited a given site:
+	Storing session-state in a cookie makes building some apps
+	trivial, like this example that tells a user how many times
+	they have visited the site:
 
 		package main
 

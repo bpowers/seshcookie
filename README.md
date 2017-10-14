@@ -13,9 +13,8 @@ string.  This makes seshcookie reliable and secure.
 examples
 --------
 
-Perhaps the simplest example would be a handler which returns
-different content based on if the user has been to the site before or
-not:
+The simple example below returns different content based on whether
+the user has visited the site before or not:
 
 
 	package main

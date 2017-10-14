@@ -34,7 +34,7 @@ not:
 			return
 		}
 	
-		session := seshcookie.Session.Get(req)
+		session := seshcookie.GetSession(req)
 	
 		count, _ := session["count"].(int)
 		count += 1
@@ -51,10 +51,10 @@ not:
 	
 	func main() {
 		key := "session key, preferably a sequence of data from /dev/urandom"
-		http.Handle("/", seshcookie.NewSessionHandler(
+		http.Handle("/", seshcookie.NewHandler(
 			&VisitedHandler{},
 			key,
-			nil))
+			&seshcookie.Config{HttpOnly: true, Secure: false}))
 	
 		if err := http.ListenAndServe(":8080", nil); err != nil {
 			log.Fatal("ListenAndServe:", err)

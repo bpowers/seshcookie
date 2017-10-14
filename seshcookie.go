@@ -29,7 +29,7 @@ import (
 
 type contextKey int
 
-const ContextKey contextKey = 0
+const sessionKey contextKey = 0
 const gobHashKey contextKey = 1
 
 // we want 16 byte blocks, for AES-128
@@ -77,6 +77,12 @@ type Handler struct {
 	config     Config
 	encKey     []byte
 	hmacKey    []byte
+}
+
+// A wrapper to get a seshcookie session out of an HTTP request's
+// Context.
+func GetSession(req *http.Request) Session {
+	return req.Context().Value(sessionKey).(Session)
 }
 
 func encodeGob(obj interface{}) ([]byte, error) {
@@ -234,7 +240,7 @@ func (s *responseWriter) WriteHeader(code int) {
 			origCookieVal = origCookie.Value
 		}
 
-		session := s.req.Context().Value(ContextKey).(Session)
+		session := s.req.Context().Value(sessionKey).(Session)
 		if len(session) == 0 {
 			// if we have an empty session, but the
 			// request didn't start out that way, we
@@ -306,7 +312,7 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	// store both the session and gobHash on this request's context
 	ctx := req.Context()
-	ctx = context.WithValue(ctx, ContextKey, session)
+	ctx = context.WithValue(ctx, sessionKey, session)
 	ctx = context.WithValue(ctx, gobHashKey, gobHash)
 
 	req = req.WithContext(ctx)

@@ -31,15 +31,12 @@ import (
 const blockSize = 16
 
 var (
-	// if you don't need multiple independent seshcookie
-	// instances, you can use this RequestSessions instance to
-	// manage & access your sessions.  Simply use it as the final
-	// parameter in your call to seshcookie.NewSessionHandler, and
-	// whenever you want to access the current session from an
-	// embedded http.Handler you can simply call:
-	//
-	//     seshcookie.Session.Get(req)
-	Session = &RequestSessions{HttpOnly: true}
+	// The default configuration to use if a nil config is passed
+	// to NewSessionHandler
+	DefaultConfig = &SessionConfig{
+		HttpOnly: true,
+		Secure:   true,
+	}
 
 	// Hash validation of the decrypted cookie failed. Most likely
 	// the session was encoded with a different cookie than we're
@@ -63,16 +60,20 @@ type SessionHandler struct {
 	http.Handler
 	CookieName string // name of the cookie to store our session in
 	CookiePath string // resource path the cookie is valid for
-	RS         *RequestSessions
+	rs         *requestSessions
 	encKey     []byte
 	hmacKey    []byte
 }
 
-type RequestSessions struct {
-	HttpOnly bool // don't allow javascript to access cookie
+type SessionConfig struct {
+	HttpOnly bool // don't allow JavaScript to access cookie
 	Secure   bool // only send session over HTTPS
-	lk       sync.Mutex
-	m        map[*http.Request]map[string]interface{}
+}
+
+type requestSessions struct {
+	config SessionConfig
+	lk     sync.Mutex
+	m      map[*http.Request]map[string]interface{}
 	// stores a hash of the serialized session (the gob) that we
 	// received with the start of the request.  Before setting a
 	// cookie for the reply, check to see if the session has
@@ -81,7 +82,7 @@ type RequestSessions struct {
 	hm map[*http.Request][]byte
 }
 
-func (rs *RequestSessions) Get(req *http.Request) map[string]interface{} {
+func (rs *requestSessions) Get(req *http.Request) map[string]interface{} {
 	rs.lk.Lock()
 	defer rs.lk.Unlock()
 
@@ -95,7 +96,7 @@ func (rs *RequestSessions) Get(req *http.Request) map[string]interface{} {
 	return rs.m[req]
 }
 
-func (rs *RequestSessions) getHash(req *http.Request) []byte {
+func (rs *requestSessions) getHash(req *http.Request) []byte {
 	rs.lk.Lock()
 	defer rs.lk.Unlock()
 
@@ -106,7 +107,7 @@ func (rs *RequestSessions) getHash(req *http.Request) []byte {
 	return rs.hm[req]
 }
 
-func (rs *RequestSessions) Set(req *http.Request, val map[string]interface{}, gobHash []byte) {
+func (rs *requestSessions) Set(req *http.Request, val map[string]interface{}, gobHash []byte) {
 	rs.lk.Lock()
 	defer rs.lk.Unlock()
 
@@ -119,7 +120,7 @@ func (rs *RequestSessions) Set(req *http.Request, val map[string]interface{}, go
 	rs.hm[req] = gobHash
 }
 
-func (rs *RequestSessions) Clear(req *http.Request) {
+func (rs *requestSessions) Clear(req *http.Request) {
 	rs.lk.Lock()
 	defer rs.lk.Unlock()
 
@@ -282,7 +283,7 @@ func (s *sessionResponseWriter) WriteHeader(code int) {
 			origCookieVal = origCookie.Value
 		}
 
-		session := s.h.RS.Get(s.req)
+		session := s.h.rs.Get(s.req)
 		if len(session) == 0 {
 			// if we have an empty session, but the
 			// request didn't start out that way, we
@@ -307,7 +308,7 @@ func (s *sessionResponseWriter) WriteHeader(code int) {
 			goto write
 		}
 
-		if bytes.Equal(gobHash, s.h.RS.getHash(s.req)) {
+		if bytes.Equal(gobHash, s.h.rs.getHash(s.req)) {
 			//log.Println("not re-setting identical cookie")
 			goto write
 		}
@@ -316,8 +317,8 @@ func (s *sessionResponseWriter) WriteHeader(code int) {
 		cookie.Name = s.h.CookieName
 		cookie.Value = encoded
 		cookie.Path = s.h.CookiePath
-		cookie.HttpOnly = s.h.RS.HttpOnly
-		cookie.Secure = s.h.RS.Secure
+		cookie.HttpOnly = s.h.rs.config.HttpOnly
+		cookie.Secure = s.h.rs.config.Secure
 		http.SetCookie(s, &cookie)
 	}
 write:
@@ -352,14 +353,18 @@ func (h *SessionHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// authentication information to it if we get some
 	session, gobHash := h.getCookieSession(req)
 
-	h.RS.Set(req, session, gobHash)
-	defer h.RS.Clear(req)
+	h.rs.Set(req, session, gobHash)
+	defer h.rs.Clear(req)
 
 	sessionWriter := &sessionResponseWriter{rw, h, req, 0}
 	h.Handler.ServeHTTP(sessionWriter, req)
 }
 
-func NewSessionHandler(handler http.Handler, key string, rs *RequestSessions) *SessionHandler {
+func NewSessionHandler(handler http.Handler, key string, config *SessionConfig) *SessionHandler {
+	if key == "" {
+		panic("don't use an empty key")
+	}
+
 	// sha1 sums are 20 bytes long.  we use the first 16 bytes as
 	// the aes key.
 	encHash := sha1.New()
@@ -369,17 +374,21 @@ func NewSessionHandler(handler http.Handler, key string, rs *RequestSessions) *S
 	hmacHash.Write([]byte(key))
 	hmacHash.Write([]byte("-hmac"))
 
-	// if the user hasn't specified a session handler, use the
-	// package's default one
-	if rs == nil {
-		rs = Session
+	// if the user hasn't specified a config, use the package's
+	// default one
+	if config == nil {
+		config = DefaultConfig
+	}
+
+	rs := &requestSessions{
+		config: *config,
 	}
 
 	return &SessionHandler{
 		Handler:    handler,
 		CookieName: "session",
 		CookiePath: "/",
-		RS:         rs,
+		rs:         rs,
 		encKey:     encHash.Sum(nil)[:blockSize],
 		hmacKey:    hmacHash.Sum(nil)[:blockSize],
 	}

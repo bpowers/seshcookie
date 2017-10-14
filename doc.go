@@ -1,36 +1,42 @@
 /*
 
-	The seshcookie package implements an http.Handler which
-	provides stateful sessions stored in cookies.  Because
-	session-state is transferred as part of the HTTP request,
-	state can be maintained seamlessly between server-restarts or
-	load balancing.
+	The seshcookie package enables you to associate session-state
+	with HTTP requests while keeping your server stateless.
+	Because session-state is transferred as part of the HTTP
+	request (in a cookie), state can be seamlessly maintained
+	between server restarts or load balancing.  It's inspired by
+	[Beaker](http://pypi.python.org/pypi/Beaker), which provides a
+	similar service for Python webapps.  The cookies are AES
+	encrypted in CTR mode, with the key derived from a
+	user-specified string.  This makes seshcookie reliable and
+	secure.
 
-	For example, here is a simple handler which returns differnet
-	content if you've visited the site before:
+	A simple example is a handler letting users know how many
+	times they have visited a given site:
 
 		package main
-		
+
 		import (
-			"http"
+			"net/http"
 			"log"
 			"fmt"
-			"seshcookie"
+
+			"github.com/bpowers/seshcookie"
 		)
-		
+
 		type VisitedHandler struct{}
-		
+
 		func (h *VisitedHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			if req.URL.Path != "/" {
 				return
 			}
-		
-			session := seshcookie.Session.Get(req)
-		
+
+			session := seshcookie.GetSession(req.Context())
+
 			count, _ := session["count"].(int)
 			count += 1
 			session["count"] = count
-		
+
 			rw.Header().Set("Content-Type", "text/plain")
 			rw.WriteHeader(200)
 			if count == 1 {
@@ -39,18 +45,17 @@
 				rw.Write([]byte(fmt.Sprintf("page view #%d", count)))
 			}
 		}
-		
+
 		func main() {
 			key := "session key, preferably a sequence of data from /dev/urandom"
-			http.Handle("/", seshcookie.NewSessionHandler(
+			http.Handle("/", seshcookie.NewHandler(
 				&VisitedHandler{},
 				key,
-				nil))
-		
+				&seshcookie.Config{HttpOnly: true, Secure: false}))
+
 			if err := http.ListenAndServe(":8080", nil); err != nil {
 				log.Fatal("ListenAndServe:", err)
 			}
 		}
-
- */
+*/
 package seshcookie

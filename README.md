@@ -1,13 +1,14 @@
 seshcookie - cookie-based sessions for Go
 =========================================
 
-seshcookie allows you to associate session-state with http requests
-while allowing your server to remain stateless.  Because session-state
-is transferred as part of the HTTP request, state can be maintained
-seamlessly between server-restarts or load balancing.  It's inspired
-by [Beaker](http://pypi.python.org/pypi/Beaker), which provides a
-similar service for Python webapps.  The cookies are AES encrypted in
-CTR mode, with the key derived from a user-specified string.
+seshcookie enables you to associate session-state with HTTP requests
+while keeping your server stateless.  Because session-state is
+transferred as part of the HTTP request (in a cookie), state can be
+seamlessly maintained between server restarts or load balancing.  It's
+inspired by [Beaker](http://pypi.python.org/pypi/Beaker), which
+provides a similar service for Python webapps.  The cookies are AES
+encrypted in CTR mode, with the key derived from a user-specified
+string.  This makes seshcookie reliable and secure.
 
 examples
 --------

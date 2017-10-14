@@ -7,6 +7,7 @@ package seshcookie
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
@@ -22,10 +23,14 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"sync"
 	"sync/atomic"
 	"time"
 )
+
+type contextKey int
+
+const ContextKey contextKey = 0
+const gobHashKey contextKey = 1
 
 // we want 16 byte blocks, for AES-128
 const blockSize = 16
@@ -33,7 +38,7 @@ const blockSize = 16
 var (
 	// The default configuration to use if a nil config is passed
 	// to NewSessionHandler
-	DefaultConfig = &SessionConfig{
+	DefaultConfig = &Config{
 		HttpOnly: true,
 		Secure:   true,
 	}
@@ -48,6 +53,10 @@ var (
 	LenError = errors.New("Bad cookie length")
 )
 
+// A seshcookie.Session is simply a map of keys to arbitrary values,
+// with the restriction that the value must be GOB-encodable.
+type Session map[string]interface{}
+
 type sessionResponseWriter struct {
 	http.ResponseWriter
 	h   *SessionHandler
@@ -56,76 +65,18 @@ type sessionResponseWriter struct {
 	wroteHeader int32
 }
 
-type SessionHandler struct {
-	http.Handler
-	CookieName string // name of the cookie to store our session in
-	CookiePath string // resource path the cookie is valid for
-	rs         *requestSessions
-	encKey     []byte
-	hmacKey    []byte
-}
-
-type SessionConfig struct {
+type Config struct {
 	HttpOnly bool // don't allow JavaScript to access cookie
 	Secure   bool // only send session over HTTPS
 }
 
-type requestSessions struct {
-	config SessionConfig
-	lk     sync.Mutex
-	m      map[*http.Request]map[string]interface{}
-	// stores a hash of the serialized session (the gob) that we
-	// received with the start of the request.  Before setting a
-	// cookie for the reply, check to see if the session has
-	// actually changed.  If it hasn't, then we don't need to send
-	// a new cookie.
-	hm map[*http.Request][]byte
-}
-
-func (rs *requestSessions) Get(req *http.Request) map[string]interface{} {
-	rs.lk.Lock()
-	defer rs.lk.Unlock()
-
-	if rs.m == nil {
-		log.Print("seshcookie: warning! trying to get session " +
-			"data for unknown request. Perhaps your handler " +
-			"isn't wrapped by a SessionHandler?")
-		return nil
-	}
-
-	return rs.m[req]
-}
-
-func (rs *requestSessions) getHash(req *http.Request) []byte {
-	rs.lk.Lock()
-	defer rs.lk.Unlock()
-
-	if rs.hm == nil {
-		return nil
-	}
-
-	return rs.hm[req]
-}
-
-func (rs *requestSessions) Set(req *http.Request, val map[string]interface{}, gobHash []byte) {
-	rs.lk.Lock()
-	defer rs.lk.Unlock()
-
-	if rs.m == nil {
-		rs.m = map[*http.Request]map[string]interface{}{}
-		rs.hm = map[*http.Request][]byte{}
-	}
-
-	rs.m[req] = val
-	rs.hm[req] = gobHash
-}
-
-func (rs *requestSessions) Clear(req *http.Request) {
-	rs.lk.Lock()
-	defer rs.lk.Unlock()
-
-	delete(rs.m, req)
-	delete(rs.hm, req)
+type SessionHandler struct {
+	http.Handler
+	CookieName string // name of the cookie to store our session in
+	CookiePath string // resource path the cookie is valid for
+	config     Config
+	encKey     []byte
+	hmacKey    []byte
 }
 
 func encodeGob(obj interface{}) ([]byte, error) {
@@ -138,10 +89,10 @@ func encodeGob(obj interface{}) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func decodeGob(encoded []byte) (map[string]interface{}, error) {
+func decodeGob(encoded []byte) (Session, error) {
 	buf := bytes.NewBuffer(encoded)
 	dec := gob.NewDecoder(buf)
-	var out map[string]interface{}
+	var out Session
 	err := dec.Decode(&out)
 	if err != nil {
 		return nil, err
@@ -236,7 +187,7 @@ func decode(block cipher.Block, hmac hash.Hash, ciphertext []byte) ([]byte, erro
 	return session, nil
 }
 
-func decodeCookie(encoded string, encKey, hmacKey []byte) (map[string]interface{}, []byte, error) {
+func decodeCookie(encoded string, encKey, hmacKey []byte) (Session, []byte, error) {
 	sessionBytes, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
 		return nil, nil, err
@@ -283,7 +234,7 @@ func (s *sessionResponseWriter) WriteHeader(code int) {
 			origCookieVal = origCookie.Value
 		}
 
-		session := s.h.rs.Get(s.req)
+		session := s.req.Context().Value(ContextKey).(Session)
 		if len(session) == 0 {
 			// if we have an empty session, but the
 			// request didn't start out that way, we
@@ -308,8 +259,8 @@ func (s *sessionResponseWriter) WriteHeader(code int) {
 			goto write
 		}
 
-		if bytes.Equal(gobHash, s.h.rs.getHash(s.req)) {
-			//log.Println("not re-setting identical cookie")
+		if bytes.Equal(gobHash, s.req.Context().Value(gobHashKey).([]byte)) {
+			log.Println("not re-setting identical cookie")
 			goto write
 		}
 
@@ -317,8 +268,8 @@ func (s *sessionResponseWriter) WriteHeader(code int) {
 		cookie.Name = s.h.CookieName
 		cookie.Value = encoded
 		cookie.Path = s.h.CookiePath
-		cookie.HttpOnly = s.h.rs.config.HttpOnly
-		cookie.Secure = s.h.rs.config.Secure
+		cookie.HttpOnly = s.h.config.HttpOnly
+		cookie.Secure = s.h.config.Secure
 		http.SetCookie(s, &cookie)
 	}
 write:
@@ -330,19 +281,19 @@ func (s *sessionResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return hijacker.Hijack()
 }
 
-func (h *SessionHandler) getCookieSession(req *http.Request) (map[string]interface{}, []byte) {
+func (h *SessionHandler) getCookieSession(req *http.Request) (Session, []byte) {
 	cookie, err := req.Cookie(h.CookieName)
 	if err != nil {
 		//log.Printf("getCookieSesh: '%#v' not found\n",
 		//	h.CookieName)
-		return map[string]interface{}{}, nil
+		return Session{}, nil
 	}
 	session, gobHash, err := decodeCookie(cookie.Value, h.encKey, h.hmacKey)
 	if err != nil {
 		// this almost always just means that the user doesn't
 		// have a valid login.
 		//log.Printf("decodeCookie: %s\n", err)
-		return map[string]interface{}{}, nil
+		return Session{}, nil
 	}
 
 	return session, gobHash
@@ -353,14 +304,18 @@ func (h *SessionHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// authentication information to it if we get some
 	session, gobHash := h.getCookieSession(req)
 
-	h.rs.Set(req, session, gobHash)
-	defer h.rs.Clear(req)
+	// store both the session and gobHash on this request's context
+	ctx := req.Context()
+	ctx = context.WithValue(ctx, ContextKey, session)
+	ctx = context.WithValue(ctx, gobHashKey, gobHash)
+
+	req = req.WithContext(ctx)
 
 	sessionWriter := &sessionResponseWriter{rw, h, req, 0}
 	h.Handler.ServeHTTP(sessionWriter, req)
 }
 
-func NewSessionHandler(handler http.Handler, key string, config *SessionConfig) *SessionHandler {
+func NewSessionHandler(handler http.Handler, key string, config *Config) *SessionHandler {
 	if key == "" {
 		panic("don't use an empty key")
 	}
@@ -380,15 +335,11 @@ func NewSessionHandler(handler http.Handler, key string, config *SessionConfig) 
 		config = DefaultConfig
 	}
 
-	rs := &requestSessions{
-		config: *config,
-	}
-
 	return &SessionHandler{
 		Handler:    handler,
 		CookieName: "session",
 		CookiePath: "/",
-		rs:         rs,
+		config:     *config,
 		encKey:     encHash.Sum(nil)[:blockSize],
 		hmacKey:    hmacHash.Sum(nil)[:blockSize],
 	}

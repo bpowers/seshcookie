@@ -41,7 +41,7 @@ type AuthHandler struct {
 // session map and redirecting to "/login"
 func (h *AuthHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
-	session := seshcookie.Session.Get(req)
+	session := seshcookie.GetSession(req)
 	log.Printf("using session: %#v\n", session)
 
 	switch req.URL.Path {
@@ -99,10 +99,10 @@ func main() {
 	// logging in.  If the user key is present, the request is
 	// passed to the FileServer, otherwise the browser is
 	// redirected to the login page.
-	handler := seshcookie.NewSessionHandler(
+	handler := seshcookie.NewHandler(
 		&AuthHandler{http.FileServer(contentDir), userDb},
 		"session key, preferably a sequence of data from /dev/urandom",
-		nil)
+		&seshcookie.Config{HttpOnly: true, Secure: false})
 
 	if err := http.ListenAndServe(":8080", handler); err != nil {
 		log.Printf("ListenAndServe:", err)

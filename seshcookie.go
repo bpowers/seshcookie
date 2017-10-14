@@ -37,7 +37,7 @@ const blockSize = 16
 
 var (
 	// The default configuration to use if a nil config is passed
-	// to NewSessionHandler
+	// to NewHandler
 	DefaultConfig = &Config{
 		HttpOnly: true,
 		Secure:   true,
@@ -57,9 +57,9 @@ var (
 // with the restriction that the value must be GOB-encodable.
 type Session map[string]interface{}
 
-type sessionResponseWriter struct {
+type responseWriter struct {
 	http.ResponseWriter
-	h   *SessionHandler
+	h   *Handler
 	req *http.Request
 	// int32 so we can use the sync/atomic functions on it
 	wroteHeader int32
@@ -70,7 +70,7 @@ type Config struct {
 	Secure   bool // only send session over HTTPS
 }
 
-type SessionHandler struct {
+type Handler struct {
 	http.Handler
 	CookieName string // name of the cookie to store our session in
 	CookiePath string // resource path the cookie is valid for
@@ -214,14 +214,14 @@ func decodeCookie(encoded string, encKey, hmacKey []byte) (Session, []byte, erro
 	return session, gobHash.Sum(nil), nil
 }
 
-func (s *sessionResponseWriter) Write(data []byte) (int, error) {
+func (s *responseWriter) Write(data []byte) (int, error) {
 	if atomic.LoadInt32(&s.wroteHeader) == 0 {
 		s.WriteHeader(http.StatusOK)
 	}
 	return s.ResponseWriter.Write(data)
 }
 
-func (s *sessionResponseWriter) WriteHeader(code int) {
+func (s *responseWriter) WriteHeader(code int) {
 	// TODO: this is racey if WriteHeader is called from 2
 	// different goroutines.  I think so is the underlying
 	// ResponseWriter from net.http, but it is worth checking.
@@ -276,12 +276,12 @@ write:
 	s.ResponseWriter.WriteHeader(code)
 }
 
-func (s *sessionResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+func (s *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	hijacker, _ := s.ResponseWriter.(http.Hijacker)
 	return hijacker.Hijack()
 }
 
-func (h *SessionHandler) getCookieSession(req *http.Request) (Session, []byte) {
+func (h *Handler) getCookieSession(req *http.Request) (Session, []byte) {
 	cookie, err := req.Cookie(h.CookieName)
 	if err != nil {
 		//log.Printf("getCookieSesh: '%#v' not found\n",
@@ -299,7 +299,7 @@ func (h *SessionHandler) getCookieSession(req *http.Request) (Session, []byte) {
 	return session, gobHash
 }
 
-func (h *SessionHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+func (h *Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// get our session a little early, so that we can add our
 	// authentication information to it if we get some
 	session, gobHash := h.getCookieSession(req)
@@ -311,11 +311,11 @@ func (h *SessionHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	req = req.WithContext(ctx)
 
-	sessionWriter := &sessionResponseWriter{rw, h, req, 0}
+	sessionWriter := &responseWriter{rw, h, req, 0}
 	h.Handler.ServeHTTP(sessionWriter, req)
 }
 
-func NewSessionHandler(handler http.Handler, key string, config *Config) *SessionHandler {
+func NewHandler(handler http.Handler, key string, config *Config) *Handler {
 	if key == "" {
 		panic("don't use an empty key")
 	}
@@ -335,7 +335,7 @@ func NewSessionHandler(handler http.Handler, key string, config *Config) *Sessio
 		config = DefaultConfig
 	}
 
-	return &SessionHandler{
+	return &Handler{
 		Handler:    handler,
 		CookieName: "session",
 		CookiePath: "/",

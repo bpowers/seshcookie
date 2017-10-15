@@ -230,58 +230,59 @@ func (s *responseWriter) Write(data []byte) (int, error) {
 	return s.ResponseWriter.Write(data)
 }
 
+func (s *responseWriter) writeCookie() {
+	origCookieVal := ""
+	if origCookie, err := s.req.Cookie(s.h.CookieName); err == nil {
+		origCookieVal = origCookie.Value
+	}
+
+	session := s.req.Context().Value(sessionKey).(Session)
+	if len(session) == 0 {
+		// if we have an empty session, but the user's cookie
+		// was non-empty, we need to clear out the users
+		// cookie.
+		if origCookieVal != "" {
+			//log.Println("clearing cookie")
+			var cookie http.Cookie
+			cookie.Name = s.h.CookieName
+			cookie.Value = ""
+			cookie.Path = "/"
+			// a cookie is expired by setting it
+			// with an expiration time in the past
+			cookie.Expires = time.Unix(0, 0).UTC()
+			http.SetCookie(s, &cookie)
+		}
+		return
+	}
+
+	encoded, gobHash, err := encodeCookie(session, s.h.encKey, s.h.hmacKey)
+	if err != nil {
+		log.Printf("createCookie: %s\n", err)
+		return
+	}
+
+	if bytes.Equal(gobHash, s.req.Context().Value(gobHashKey).([]byte)) {
+		log.Println("not re-setting identical cookie")
+		return
+	}
+
+	var cookie http.Cookie
+	cookie.Name = s.h.CookieName
+	cookie.Value = encoded
+	cookie.Path = s.h.CookiePath
+	cookie.HttpOnly = s.h.config.HttpOnly
+	cookie.Secure = s.h.config.Secure
+	http.SetCookie(s, &cookie)
+}
+
 func (s *responseWriter) WriteHeader(code int) {
 	// TODO: this is racey if WriteHeader is called from 2
 	// different goroutines.  I think so is the underlying
 	// ResponseWriter from net.http, but it is worth checking.
 	if atomic.AddInt32(&s.wroteHeader, 1) == 1 {
-		origCookie, err := s.req.Cookie(s.h.CookieName)
-		var origCookieVal string
-		if err != nil {
-			origCookieVal = ""
-		} else {
-			origCookieVal = origCookie.Value
-		}
-
-		session := s.req.Context().Value(sessionKey).(Session)
-		if len(session) == 0 {
-			// if we have an empty session, but the
-			// request didn't start out that way, we
-			// assume the user wants us to clear the
-			// session
-			if origCookieVal != "" {
-				//log.Println("clearing cookie")
-				var cookie http.Cookie
-				cookie.Name = s.h.CookieName
-				cookie.Value = ""
-				cookie.Path = "/"
-				// a cookie is expired by setting it
-				// with an expiration time in the past
-				cookie.Expires = time.Unix(0, 0).UTC()
-				http.SetCookie(s, &cookie)
-			}
-			goto write
-		}
-		encoded, gobHash, err := encodeCookie(session, s.h.encKey, s.h.hmacKey)
-		if err != nil {
-			log.Printf("createCookie: %s\n", err)
-			goto write
-		}
-
-		if bytes.Equal(gobHash, s.req.Context().Value(gobHashKey).([]byte)) {
-			log.Println("not re-setting identical cookie")
-			goto write
-		}
-
-		var cookie http.Cookie
-		cookie.Name = s.h.CookieName
-		cookie.Value = encoded
-		cookie.Path = s.h.CookiePath
-		cookie.HttpOnly = s.h.config.HttpOnly
-		cookie.Secure = s.h.config.Secure
-		http.SetCookie(s, &cookie)
+		s.writeCookie()
 	}
-write:
+
 	s.ResponseWriter.WriteHeader(code)
 }
 

@@ -11,31 +11,26 @@ import (
 	"time"
 )
 
-func createKey() (encKey, hmacKey []byte) {
+func createKey() (encKey []byte) {
 	encSha1 := sha1.New()
 	encSha1.Write([]byte(time.Now().UTC().String()))
 	encSha1.Write([]byte("-enc"))
 	encKey = encSha1.Sum(nil)[:blockSize]
 
-	hmacSha1 := sha1.New()
-	hmacSha1.Write([]byte(time.Now().UTC().String()))
-	hmacSha1.Write([]byte("-hmac"))
-	hmacKey = hmacSha1.Sum(nil)[:blockSize]
-
 	return
 }
 
 func TestRoundtrip(t *testing.T) {
-	encKey, hmacKey := createKey()
+	encKey := createKey()
 
 	orig := map[string]interface{}{"a": 1, "b": "c", "d": 1.2}
 
-	encoded, encodedHash, err := encodeCookie(orig, encKey, hmacKey)
+	encoded, encodedHash, err := encodeCookie(orig, encKey)
 	if err != nil {
 		t.Errorf("encodeCookie: %s", err)
 		return
 	}
-	decoded, decodedHash, err := decodeCookie(encoded, encKey, hmacKey)
+	decoded, decodedHash, err := decodeCookie(encoded, encKey)
 	if err != nil {
 		t.Errorf("decodeCookie: %s", err)
 		return

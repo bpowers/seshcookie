@@ -10,15 +10,12 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha1"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/gob"
 	"errors"
-	"hash"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -29,11 +26,14 @@ import (
 
 type contextKey int
 
-const sessionKey contextKey = 0
-const gobHashKey contextKey = 1
+const (
+	sessionKey contextKey = 0
+	gobHashKey contextKey = 1
 
-// we want 16 byte blocks, for AES-128
-const blockSize = 16
+	// we want 16 byte blocks, for AES-128
+	blockSize    = 16
+	gcmNonceSize = 12
+)
 
 var (
 	// The default configuration to use if a nil config is passed
@@ -76,7 +76,6 @@ type Handler struct {
 	CookiePath string // resource path the cookie is valid for
 	config     Config
 	encKey     []byte
-	hmacKey    []byte
 }
 
 // A wrapper to get a seshcookie session out of a Context.
@@ -109,116 +108,84 @@ func decodeGob(encoded []byte) (Session, error) {
 	return out, nil
 }
 
-// encode uses the given block cipher (in CTR mode) to encrypt the
-// data, along with a hash, returning the iv and the ciphertext. What
-// is returned looks like:
+// encodeCookie encodes a gob-encodable piece of content into a base64
+// encoded string, using AES-GCM mode for authenticated encryption.
 //
-//   encrypted(salt + sessionData) + iv + hmac
-//
-func encode(block cipher.Block, hmac hash.Hash, data []byte) ([]byte, error) {
-
-	buf := bytes.NewBuffer(nil)
-
-	salt := make([]byte, block.BlockSize())
-	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
-		return nil, err
-	}
-	buf.Write(salt)
-	buf.Write(data)
-
-	session := buf.Bytes()
-
-	iv := make([]byte, block.BlockSize())
-	if _, err := rand.Read(iv); err != nil {
-		return nil, err
-	}
-
-	stream := cipher.NewCTR(block, iv)
-	stream.XORKeyStream(session, session)
-
-	buf.Write(iv)
-	hmac.Write(buf.Bytes())
-	buf.Write(hmac.Sum(nil))
-
-	return buf.Bytes(), nil
-}
-
-func encodeCookie(content interface{}, encKey, hmacKey []byte) (string, []byte, error) {
-	encodedGob, err := encodeGob(content)
+// Go documentation suggests to never encode more than 2^32 cookies,
+// due to the risk of nonce-collision.
+func encodeCookie(content interface{}, encKey []byte) (string, []byte, error) {
+	plaintext, err := encodeGob(content)
 	if err != nil {
 		return "", nil, err
 	}
 
-	gobHash := sha1.New()
-	gobHash.Write(encodedGob)
+	// we want to record a hash of the serialized session to know
+	// if the contents of the cookie changed.  As we use a unique
+	// nonce per encryption, we need to hash the plaintext as it
+	// is before being passed through AES-GCM
+	gobHash := sha256.New()
+	gobHash.Write(plaintext)
 
-	aesCipher, err := aes.NewCipher(encKey)
+	block, err := aes.NewCipher(encKey)
 	if err != nil {
-		return "", nil, err
+		return "", nil, fmt.Errorf("aes.NewCipher: %s", err)
 	}
 
-	hmacHash := hmac.New(sha256.New, hmacKey)
-
-	sessionBytes, err := encode(aesCipher, hmacHash, encodedGob)
-	if err != nil {
-		return "", nil, err
+	if block.BlockSize() != blockSize {
+		return "", nil, fmt.Errorf("block size assumption mismatch")
 	}
 
-	return base64.StdEncoding.EncodeToString(sessionBytes), gobHash.Sum(nil), nil
+	nonce := make([]byte, gcmNonceSize)
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", nil, fmt.Errorf("io.ReadFull(rand.Reader): %s", err)
+	}
+
+	aeadCipher, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", nil, fmt.Errorf("cipher.NewGCM: %s", err)
+	}
+
+	ciphertext := aeadCipher.Seal(nonce, nonce, plaintext, nil)
+
+	return base64.StdEncoding.EncodeToString(ciphertext), gobHash.Sum(nil), nil
 }
 
-// decode uses the given block cipher (in CTR mode) to decrypt the
-// data, and validate the hash.  If hash validation fails, an error is
-// returned.
-func decode(block cipher.Block, hmac hash.Hash, ciphertext []byte) ([]byte, error) {
-	if len(ciphertext) < 2*block.BlockSize()+hmac.Size() {
-		return nil, LenError
-	}
-
-	receivedHmac := ciphertext[len(ciphertext)-hmac.Size():]
-	ciphertext = ciphertext[:len(ciphertext)-hmac.Size()]
-
-	hmac.Write(ciphertext)
-	if subtle.ConstantTimeCompare(hmac.Sum(nil), receivedHmac) != 1 {
-		return nil, HashError
-	}
-
-	// split the iv and session bytes
-	iv := ciphertext[len(ciphertext)-block.BlockSize():]
-	session := ciphertext[:len(ciphertext)-block.BlockSize()]
-
-	stream := cipher.NewCTR(block, iv)
-	stream.XORKeyStream(session, session)
-
-	// skip past the iv
-	session = session[block.BlockSize():]
-
-	return session, nil
-}
-
-func decodeCookie(encoded string, encKey, hmacKey []byte) (Session, []byte, error) {
-	sessionBytes, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		return nil, nil, err
-	}
-	aesCipher, err := aes.NewCipher(encKey)
+// decodeCookie decrypts a base64-encoded cookie using AES-GCM for
+// authenticated decryption.
+func decodeCookie(encoded string, encKey []byte) (Session, []byte, error) {
+	cookie, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	hmacHash := hmac.New(sha256.New, hmacKey)
-	gobBytes, err := decode(aesCipher, hmacHash, sessionBytes)
+	block, err := aes.NewCipher(encKey)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("aes.NewCipher: %s", err)
 	}
 
-	gobHash := sha1.New()
-	gobHash.Write(gobBytes)
+	if len(cookie) < block.BlockSize() {
+		return nil, nil, fmt.Errorf("expected ciphertext(%d) to be bigger than blockSize", len(cookie))
+	}
 
-	session, err := decodeGob(gobBytes)
+	// split the cookie data
+	nonce, ciphertext := cookie[:gcmNonceSize], cookie[gcmNonceSize:]
+
+	aeadCipher, err := cipher.NewGCM(block)
 	if err != nil {
-		log.Printf("decodeGob: %s\n", err)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("cipher.NewGCM: %s", err)
+	}
+
+	plaintext, err := aeadCipher.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("aeadCipher.Open: %s", err)
+	}
+
+	gobHash := sha256.New()
+	gobHash.Write(plaintext)
+
+	session, err := decodeGob(plaintext)
+	if err != nil {
+		return nil, nil, fmt.Errorf("decodeGob: %s", err)
 	}
 	return session, gobHash.Sum(nil), nil
 }
@@ -255,14 +222,14 @@ func (s *responseWriter) writeCookie() {
 		return
 	}
 
-	encoded, gobHash, err := encodeCookie(session, s.h.encKey, s.h.hmacKey)
+	encoded, gobHash, err := encodeCookie(session, s.h.encKey)
 	if err != nil {
-		log.Printf("createCookie: %s\n", err)
+		log.Printf("encodeCookie: %s\n", err)
 		return
 	}
 
 	if bytes.Equal(gobHash, s.req.Context().Value(gobHashKey).([]byte)) {
-		log.Println("not re-setting identical cookie")
+		// log.Println("not re-setting identical cookie")
 		return
 	}
 
@@ -298,7 +265,7 @@ func (h *Handler) getCookieSession(req *http.Request) (Session, []byte) {
 		//	h.CookieName)
 		return Session{}, nil
 	}
-	session, gobHash, err := decodeCookie(cookie.Value, h.encKey, h.hmacKey)
+	session, gobHash, err := decodeCookie(cookie.Value, h.encKey)
 	if err != nil {
 		// this almost always just means that the user doesn't
 		// have a valid login.
@@ -330,14 +297,11 @@ func NewHandler(handler http.Handler, key string, config *Config) *Handler {
 		panic("don't use an empty key")
 	}
 
-	// sha1 sums are 20 bytes long.  we use the first 16 bytes as
+	// sha256 sums are 32 bytes long.  we use the first 16 bytes as
 	// the aes key.
-	encHash := sha1.New()
+	encHash := sha256.New()
 	encHash.Write([]byte(key))
-	encHash.Write([]byte("-encryption"))
-	hmacHash := sha1.New()
-	hmacHash.Write([]byte(key))
-	hmacHash.Write([]byte("-hmac"))
+	encHash.Write([]byte("-seshcookie-encryption"))
 
 	// if the user hasn't specified a config, use the package's
 	// default one
@@ -351,6 +315,5 @@ func NewHandler(handler http.Handler, key string, config *Config) *Handler {
 		CookiePath: "/",
 		config:     *config,
 		encKey:     encHash.Sum(nil)[:blockSize],
-		hmacKey:    hmacHash.Sum(nil)[:blockSize],
 	}
 }

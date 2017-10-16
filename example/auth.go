@@ -105,6 +105,6 @@ func main() {
 		&seshcookie.Config{HttpOnly: true, Secure: false})
 
 	if err := http.ListenAndServe(":8080", handler); err != nil {
-		log.Printf("ListenAndServe:", err)
+		log.Printf("ListenAndServe: %s", err)
 	}
 }

@@ -1,6 +1,10 @@
 seshcookie - cookie-based sessions for Go
 =========================================
 
+[![Build Status](https://travis-ci.org/bpowers/seshcookie.svg?branch=master)](https://travis-ci.org/bpowers/seshcookie)
+[![GoDoc](https://godoc.org/github.com/bpowers/seshcookie?status.svg)](https://godoc.org/github.com/bpowers/seshcookie)
+[![Go Report Card](https://goreportcard.com/badge/github.com/bpowers/seshcookie)](https://goreportcard.com/report/github.com/bpowers/seshcookie)
+
 seshcookie enables you to associate session-state with HTTP requests
 while keeping your server stateless.  Because session-state is
 transferred as part of the HTTP request (in a cookie), state can be

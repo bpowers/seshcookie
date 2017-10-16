@@ -38,8 +38,10 @@ var (
 	// DefaultConfig is used as the configuration if a nil config
 	// is passed to NewHandler
 	DefaultConfig = &Config{
-		HTTPOnly: true,
-		Secure:   true,
+		CookieName: "session",
+		CookiePath: "/",
+		HTTPOnly:   true,
+		Secure:     true,
 	}
 )
 
@@ -59,18 +61,18 @@ type responseWriter struct {
 // attributes, like if they are accessible from JavaScript and/or only
 // set on HTTPS connections.
 type Config struct {
-	HTTPOnly bool // don't allow JavaScript to access cookie
-	Secure   bool // only send session over HTTPS
+	CookieName string // name of the cookie to store our session in
+	CookiePath string // resource path the cookie is valid for
+	HTTPOnly   bool   // don't allow JavaScript to access cookie
+	Secure     bool   // only send session over HTTPS
 }
 
 // Handler is the seshcookie HTTP handler that provides a Session
 // object to child handlers.
 type Handler struct {
 	http.Handler
-	CookieName string // name of the cookie to store our session in
-	CookiePath string // resource path the cookie is valid for
-	config     Config
-	encKey     []byte
+	Config Config
+	encKey []byte
 }
 
 // GetSession is a wrapper to grab the seshcookie Session out of a Context.
@@ -194,7 +196,7 @@ func (s *responseWriter) Write(data []byte) (int, error) {
 
 func (s *responseWriter) writeCookie() {
 	origCookieVal := ""
-	if origCookie, err := s.req.Cookie(s.h.CookieName); err == nil {
+	if origCookie, err := s.req.Cookie(s.h.Config.CookieName); err == nil {
 		origCookieVal = origCookie.Value
 	}
 
@@ -206,7 +208,7 @@ func (s *responseWriter) writeCookie() {
 		if origCookieVal != "" {
 			//log.Println("clearing cookie")
 			var cookie http.Cookie
-			cookie.Name = s.h.CookieName
+			cookie.Name = s.h.Config.CookieName
 			cookie.Value = ""
 			cookie.Path = "/"
 			// a cookie is expired by setting it
@@ -229,11 +231,11 @@ func (s *responseWriter) writeCookie() {
 	}
 
 	var cookie http.Cookie
-	cookie.Name = s.h.CookieName
+	cookie.Name = s.h.Config.CookieName
 	cookie.Value = encoded
-	cookie.Path = s.h.CookiePath
-	cookie.HttpOnly = s.h.config.HTTPOnly
-	cookie.Secure = s.h.config.Secure
+	cookie.Path = s.h.Config.CookiePath
+	cookie.HttpOnly = s.h.Config.HTTPOnly
+	cookie.Secure = s.h.Config.Secure
 	http.SetCookie(s, &cookie)
 }
 
@@ -254,10 +256,10 @@ func (s *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 }
 
 func (h *Handler) getCookieSession(req *http.Request) (Session, []byte) {
-	cookie, err := req.Cookie(h.CookieName)
+	cookie, err := req.Cookie(h.Config.CookieName)
 	if err != nil {
 		//log.Printf("getCookieSesh: '%#v' not found\n",
-		//	h.CookieName)
+		//	h.Config.CookieName)
 		return Session{}, nil
 	}
 	session, gobHash, err := decodeCookie(cookie.Value, h.encKey)
@@ -306,11 +308,13 @@ func NewHandler(handler http.Handler, key string, config *Config) *Handler {
 		config = DefaultConfig
 	}
 
+	if config.CookieName == "" {
+		config.CookieName = "seshcookie"
+	}
+
 	return &Handler{
-		Handler:    handler,
-		CookieName: "session",
-		CookiePath: "/",
-		config:     *config,
-		encKey:     encHash.Sum(nil)[:blockSize],
+		Handler: handler,
+		Config:  *config,
+		encKey:  encHash.Sum(nil)[:blockSize],
 	}
 }

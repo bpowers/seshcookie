@@ -21,50 +21,51 @@ The simple example below returns different content based on whether
 the user has visited the site before or not:
 
 
-	package main
-	
-	import (
-		"net/http"
-		"log"
-		"fmt"
+```Go
+package main
 
-		"github.com/bpowers/seshcookie"
-	)
-	
-	type VisitedHandler struct{}
-	
-	func (h *VisitedHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-		if req.URL.Path != "/" {
-			return
-		}
-	
-		session := seshcookie.GetSession(req.Context())
-	
-		count, _ := session["count"].(int)
-		count += 1
-		session["count"] = count
-	
-		rw.Header().Set("Content-Type", "text/plain")
-		rw.WriteHeader(200)
-		if count == 1 {
-			rw.Write([]byte("this is your first visit, welcome!"))
-		} else {
-			rw.Write([]byte(fmt.Sprintf("page view #%d", count)))
-		}
-	}
-	
-	func main() {
-		key := "session key, preferably a sequence of data from /dev/urandom"
-		http.Handle("/", seshcookie.NewHandler(
-			&VisitedHandler{},
-			key,
-			&seshcookie.Config{HTTPOnly: true, Secure: false}))
-	
-		if err := http.ListenAndServe(":8080", nil); err != nil {
-			log.Fatal("ListenAndServe:", err)
-		}
+import (
+	"fmt"
+	"log"
+	"net/http"
+
+	"github.com/bpowers/seshcookie"
+)
+
+type VisitedHandler struct{}
+
+func (h *VisitedHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	if req.URL.Path != "/" {
+		return
 	}
 
+	session := seshcookie.GetSession(req.Context())
+
+	count, _ := session["count"].(int)
+	count++
+	session["count"] = count
+
+	rw.Header().Set("Content-Type", "text/plain")
+	rw.WriteHeader(200)
+	if count == 1 {
+		rw.Write([]byte("this is your first visit, welcome!"))
+	} else {
+		rw.Write([]byte(fmt.Sprintf("page view #%d", count)))
+	}
+}
+
+func main() {
+	key := "session key, preferably a sequence of data from /dev/urandom"
+	http.Handle("/", seshcookie.NewHandler(
+		&VisitedHandler{},
+		key,
+		&seshcookie.Config{HTTPOnly: true, Secure: false}))
+
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		log.Fatalf("ListenAndServe: %s", err)
+	}
+}
+```
 
 There is a more detailed example in example/ which uses seshcookie to
 enforce authentication for a particular resource.  In particular, it

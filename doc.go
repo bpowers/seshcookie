@@ -36,7 +36,7 @@ the site:
 		session := seshcookie.GetSession(req.Context())
 
 		count, _ := session["count"].(int)
-		count += 1
+		count++
 		session["count"] = count
 
 		rw.Header().Set("Content-Type", "text/plain")
@@ -56,7 +56,7 @@ the site:
 			&seshcookie.Config{HTTPOnly: true, Secure: false}))
 
 		if err := http.ListenAndServe(":8080", nil); err != nil {
-			log.Fatal("ListenAndServe:", err)
+			log.Fatalf("ListenAndServe: %s", err)
 		}
 	}
 */

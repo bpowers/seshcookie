@@ -63,6 +63,8 @@ type Config struct {
 	Secure   bool // only send session over HTTPS
 }
 
+// Handler is the seshcookie HTTP handler that provides a Session
+// object to child handlers.
 type Handler struct {
 	http.Handler
 	CookieName string // name of the cookie to store our session in
@@ -71,7 +73,7 @@ type Handler struct {
 	encKey     []byte
 }
 
-// A wrapper to get a seshcookie session out of a Context.
+// GetSession is a wrapper to grab the seshcookie Session out of a Context.
 //
 // By only providing a 'Get' API, we ensure that clients can't
 // mistakenly set something unexpected on the given context in place
@@ -285,6 +287,8 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	h.Handler.ServeHTTP(sessionWriter, req)
 }
 
+// NewHandler creates a new seshcookie Handler with a given encryption
+// key and configuration.
 func NewHandler(handler http.Handler, key string, config *Config) *Handler {
 	if key == "" {
 		panic("don't use an empty key")

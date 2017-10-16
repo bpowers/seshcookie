@@ -14,7 +14,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/gob"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -36,25 +35,16 @@ const (
 )
 
 var (
-	// The default configuration to use if a nil config is passed
-	// to NewHandler
+	// DefaultConfig is used as the configuration if a nil config
+	// is passed to NewHandler
 	DefaultConfig = &Config{
-		HttpOnly: true,
+		HTTPOnly: true,
 		Secure:   true,
 	}
-
-	// Hash validation of the decrypted cookie failed. Most likely
-	// the session was encoded with a different cookie than we're
-	// using to decode it, but its possible the client (or someone
-	// else) tried to modify the session.
-	HashError = errors.New("Hash validation failed")
-
-	// The cookie is too short, so we must exit decoding early.
-	LenError = errors.New("Bad cookie length")
 )
 
-// A seshcookie.Session is simply a map of keys to arbitrary values,
-// with the restriction that the value must be GOB-encodable.
+// Session is simply a map of keys to arbitrary values, with the
+// restriction that the value must be GOB-encodable.
 type Session map[string]interface{}
 
 type responseWriter struct {
@@ -65,8 +55,11 @@ type responseWriter struct {
 	wroteHeader int32
 }
 
+// Config provides directives to a seshcookie instance on cookie
+// attributes, like if they are accessible from JavaScript and/or only
+// set on HTTPS connections.
 type Config struct {
-	HttpOnly bool // don't allow JavaScript to access cookie
+	HTTPOnly bool // don't allow JavaScript to access cookie
 	Secure   bool // only send session over HTTPS
 }
 
@@ -237,7 +230,7 @@ func (s *responseWriter) writeCookie() {
 	cookie.Name = s.h.CookieName
 	cookie.Value = encoded
 	cookie.Path = s.h.CookiePath
-	cookie.HttpOnly = s.h.config.HttpOnly
+	cookie.HttpOnly = s.h.config.HTTPOnly
 	cookie.Secure = s.h.config.Secure
 	http.SetCookie(s, &cookie)
 }

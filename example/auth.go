@@ -102,7 +102,7 @@ func main() {
 	handler := seshcookie.NewHandler(
 		&AuthHandler{http.FileServer(contentDir), userDb},
 		"session key, preferably a sequence of data from /dev/urandom",
-		&seshcookie.Config{HttpOnly: true, Secure: false})
+		&seshcookie.Config{HTTPOnly: true, Secure: false})
 
 	if err := http.ListenAndServe(":8080", handler); err != nil {
 		log.Printf("ListenAndServe: %s", err)

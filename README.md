@@ -54,7 +54,7 @@ the user has visited the site before or not:
 		http.Handle("/", seshcookie.NewHandler(
 			&VisitedHandler{},
 			key,
-			&seshcookie.Config{HttpOnly: true, Secure: false}))
+			&seshcookie.Config{HTTPOnly: true, Secure: false}))
 	
 		if err := http.ListenAndServe(":8080", nil); err != nil {
 			log.Fatal("ListenAndServe:", err)

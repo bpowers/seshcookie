@@ -34,11 +34,13 @@ const (
 	gcmNonceSize = 12
 )
 
+const defaultCookieName = "session"
+
 var (
 	// DefaultConfig is used as the configuration if a nil config
 	// is passed to NewHandler
 	DefaultConfig = &Config{
-		CookieName: "session",
+		CookieName: defaultCookieName, // "session"
 		CookiePath: "/",
 		HTTPOnly:   true,
 		Secure:     true,
@@ -251,8 +253,8 @@ func (s *responseWriter) WriteHeader(code int) {
 }
 
 func (s *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	hijacker, _ := s.ResponseWriter.(http.Hijacker)
-	return hijacker.Hijack()
+	// TODO: support hijacking with atomic flags
+	return nil, nil, fmt.Errorf("seshcookie doesn't support hijacking")
 }
 
 func (h *Handler) getCookieSession(req *http.Request) (Session, []byte) {
@@ -309,7 +311,7 @@ func NewHandler(handler http.Handler, key string, config *Config) *Handler {
 	}
 
 	if config.CookieName == "" {
-		config.CookieName = "seshcookie"
+		config.CookieName = defaultCookieName
 	}
 
 	return &Handler{

@@ -8,9 +8,11 @@ requests while keeping your server stateless.  Because session-state
 is transferred as part of the HTTP request (in a cookie), state can be
 seamlessly maintained between server restarts or load balancing.  It's
 inspired by Beaker (http://pypi.python.org/pypi/Beaker), which
-provides a similar service for Python webapps.  The cookies are AES
-encrypted in CTR mode, with the key derived from a user-specified
-string.  This makes seshcookie reliable and secure.
+provides a similar service for Python webapps.  The cookies are
+authenticated and encrypted (using AES-GCM) with a key derived from a
+string provided to the NewHandler function.  This makes seshcookie
+reliable and secure: session contents are opaque to users and not able
+to be manipulated or forged by third parties.
 
 Storing session-state in a cookie makes building some apps trivial,
 like this example that tells a user how many times they have visited

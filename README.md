@@ -3,7 +3,7 @@ seshcookie - cookie-based sessions for Go
 
 [![Build Status](https://travis-ci.org/bpowers/seshcookie.svg?branch=master)](https://travis-ci.org/bpowers/seshcookie)
 [![GoDoc](https://godoc.org/github.com/bpowers/seshcookie?status.svg)](https://godoc.org/github.com/bpowers/seshcookie)
-[![cover.run go](https://cover.run/go/github.com/bpowers/seshcookie.svg)](https://cover.run/go/github.com/bpowers/seshcookie)
+[![cover.run](https://cover.run/go/github.com/bpowers/seshcookie.svg?style=flat&tag=golang-1.10)](https://cover.run/go?tag=golang-1.10&repo=github.com%2Fbpowers%2Fseshcookie)
 [![Go Report Card](https://goreportcard.com/badge/github.com/bpowers/seshcookie)](https://goreportcard.com/report/github.com/bpowers/seshcookie)
 
 seshcookie enables you to associate session-state with HTTP requests

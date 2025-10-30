@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/bpowers/seshcookie/internal/pb"
+	"golang.org/x/crypto/argon2"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -56,6 +57,53 @@ var (
 	// ErrTypeMismatch is returned when the session type doesn't match expected type
 	ErrTypeMismatch = errors.New("session type mismatch")
 )
+
+// deriveKey derives an AES-128 encryption key from a user-provided key string
+// using Argon2id, a memory-hard key derivation function resistant to GPU attacks.
+//
+// The salt is deterministically derived from the key itself to maintain the
+// stateless design (no salt storage needed). While this means the salt is not
+// independent, it provides defense-in-depth if the key has weak entropy.
+//
+// SECURITY: The key parameter should be high-entropy (e.g., from crypto/rand).
+// Argon2id parameters follow OWASP recommendations for session key derivation.
+func deriveKey(key string) ([]byte, error) {
+	if key == "" {
+		return nil, errors.New("key must not be empty")
+	}
+
+	// Derive a deterministic salt from the key
+	// Format: SHA256("seshcookie-v2-salt" || key)
+	saltHash := sha256.New()
+	saltHash.Write([]byte("seshcookie-v2-salt"))
+	saltHash.Write([]byte(key))
+	salt := saltHash.Sum(nil)[:16] // 16-byte salt
+
+	// Argon2id parameters (OWASP recommendations)
+	const (
+		time    = 3          // 3 iterations
+		memory  = 16 * 1024  // 16 MB in KiB
+		threads = 4          // 4 parallel threads
+		keyLen  = 16         // 16 bytes for AES-128
+	)
+
+	// Derive key using Argon2id
+	derivedKey := argon2.IDKey(
+		[]byte(key),
+		salt,
+		time,
+		memory,
+		threads,
+		keyLen,
+	)
+
+	if len(derivedKey) != blockSize {
+		return nil, fmt.Errorf("derived key length mismatch: got %d, want %d",
+			len(derivedKey), blockSize)
+	}
+
+	return derivedKey, nil
+}
 
 // contextKey is used for storing session data in context.
 // We use a generic struct to ensure each Handler[T] has a unique key type.
@@ -453,11 +501,10 @@ func NewHandler[T proto.Message](handler http.Handler, key string, config *Confi
 		return nil, errors.New("encryption key must not be empty")
 	}
 
-	// sha256 sums are 32 bytes long. we use the first 16 bytes as
-	// the aes key.
-	encHash := sha256.New()
-	encHash.Write([]byte(key))
-	encHash.Write([]byte("-seshcookie-encryption"))
+	encKey, err := deriveKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("deriveKey: %w", err)
+	}
 
 	// if the user hasn't specified a config, use the package's
 	// default one
@@ -477,6 +524,6 @@ func NewHandler[T proto.Message](handler http.Handler, key string, config *Confi
 	return &Handler[T]{
 		Handler: handler,
 		Config:  *config,
-		encKey:  encHash.Sum(nil)[:blockSize],
+		encKey:  encKey,
 	}, nil
 }

@@ -33,6 +33,78 @@ func createKeyString() string {
 	return string(createKey())
 }
 
+// TestDeriveKey tests the Argon2id key derivation function
+func TestDeriveKey(t *testing.T) {
+	t.Run("deterministic", func(t *testing.T) {
+		key := "test-key-12345"
+		k1, err := deriveKey(key)
+		if err != nil {
+			t.Fatalf("deriveKey: %v", err)
+		}
+		k2, err := deriveKey(key)
+		if err != nil {
+			t.Fatalf("deriveKey: %v", err)
+		}
+		if !bytes.Equal(k1, k2) {
+			t.Error("deriveKey not deterministic: same input produced different outputs")
+		}
+	})
+
+	t.Run("empty key", func(t *testing.T) {
+		_, err := deriveKey("")
+		if err == nil {
+			t.Error("expected error for empty key, got nil")
+		}
+	})
+
+	t.Run("different keys produce different outputs", func(t *testing.T) {
+		k1, err := deriveKey("key1")
+		if err != nil {
+			t.Fatalf("deriveKey(key1): %v", err)
+		}
+		k2, err := deriveKey("key2")
+		if err != nil {
+			t.Fatalf("deriveKey(key2): %v", err)
+		}
+		if bytes.Equal(k1, k2) {
+			t.Error("different keys produced same derived key")
+		}
+	})
+
+	t.Run("correct length", func(t *testing.T) {
+		k, err := deriveKey("test-key")
+		if err != nil {
+			t.Fatalf("deriveKey: %v", err)
+		}
+		if len(k) != blockSize {
+			t.Errorf("expected key length %d, got %d", blockSize, len(k))
+		}
+	})
+
+	t.Run("high entropy key", func(t *testing.T) {
+		// Test with a high-entropy key
+		k, err := deriveKey("39f8b2c7e4d1a9f0e3b7c8d2a6f5e1b9c8d7e4f3a2b1c9d8e7f6a5b4c3d2e1f0")
+		if err != nil {
+			t.Fatalf("deriveKey with high-entropy key: %v", err)
+		}
+		if len(k) != blockSize {
+			t.Errorf("expected key length %d, got %d", blockSize, len(k))
+		}
+	})
+}
+
+// BenchmarkDeriveKey benchmarks the Argon2id key derivation performance
+func BenchmarkDeriveKey(b *testing.B) {
+	key := "benchmark-key-32-bytes-long-test-key-value"
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := deriveKey(key)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 // TestRoundtrip tests encoding and decoding a session
 func TestRoundtrip(t *testing.T) {
 	encKey := createKey()

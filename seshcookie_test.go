@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bpowers/seshcookie/internal/pb"
 )
 
 const testCookieName = "testcookiepleaseignore"
@@ -35,7 +37,7 @@ func createKeyString() string {
 func TestRoundtrip(t *testing.T) {
 	encKey := createKey()
 
-	orig := &TestSession{
+	orig := &pb.TestSession{
 		Count: 1,
 		User:  "test",
 		Value: 1.2,
@@ -49,7 +51,7 @@ func TestRoundtrip(t *testing.T) {
 		return
 	}
 
-	decoded, decodedHash, _, err := decodeCookie[*TestSession](encoded, encKey, maxAge)
+	decoded, decodedHash, _, err := decodeCookie[*pb.TestSession](encoded, encKey, maxAge)
 	if err != nil {
 		t.Errorf("decodeCookie: %s", err)
 		return
@@ -81,7 +83,7 @@ func TestRoundtrip(t *testing.T) {
 func TestExpiryValidation(t *testing.T) {
 	encKey := createKey()
 
-	session := &TestSession{
+	session := &pb.TestSession{
 		Count: 42,
 		User:  "expired",
 	}
@@ -98,7 +100,7 @@ func TestExpiryValidation(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Try to decode - should fail with expiry error
-	decoded, _, _, err := decodeCookie[*TestSession](encoded, encKey, maxAge)
+	decoded, _, _, err := decodeCookie[*pb.TestSession](encoded, encKey, maxAge)
 	if err == nil {
 		t.Errorf("expected expiry error, got nil")
 	}
@@ -128,10 +130,10 @@ func TestHandler(t *testing.T) {
 			return
 		}
 
-		session, err := GetSession[*TestSession](req.Context())
+		session, err := GetSession[*pb.TestSession](req.Context())
 		if err != nil {
 			// No session yet, create a new one
-			session = &TestSession{Count: 0}
+			session = &pb.TestSession{Count: 0}
 		}
 
 		session.Count++
@@ -141,7 +143,7 @@ func TestHandler(t *testing.T) {
 
 		// for testing cookie deletion
 		if session.Count >= 2 {
-			if err := ClearSession[*TestSession](req.Context()); err != nil {
+			if err := ClearSession[*pb.TestSession](req.Context()); err != nil {
 				t.Errorf("ClearSession failed: %s", err)
 			}
 		}
@@ -155,7 +157,7 @@ func TestHandler(t *testing.T) {
 		}
 	})
 
-	handler, err := NewHandler[*TestSession](visitHandler, key, config)
+	handler, err := NewHandler[*pb.TestSession](visitHandler, key, config)
 	if err != nil {
 		t.Fatalf("NewHandler: %s", err)
 	}
@@ -202,7 +204,7 @@ func TestHandler(t *testing.T) {
 
 	// create a new handler to ensure decoding the cookie isn't
 	// dependent on local state
-	handler, err = NewHandler[*TestSession](visitHandler, key, config)
+	handler, err = NewHandler[*pb.TestSession](visitHandler, key, config)
 	if err != nil {
 		t.Fatalf("NewHandler: %s", err)
 	}
@@ -256,7 +258,7 @@ func TestHandler(t *testing.T) {
 
 // TestEmptyKeyReturnsError tests that NewHandler returns an error for empty key
 func TestEmptyKeyReturnsError(t *testing.T) {
-	_, err := NewHandler[*TestSession](http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {}), "", nil)
+	_, err := NewHandler[*pb.TestSession](http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {}), "", nil)
 
 	if err == nil {
 		t.Errorf("expected error for empty key")
@@ -293,7 +295,7 @@ func TestNoHijack(t *testing.T) {
 		}
 	})
 
-	handler, err := NewHandler[*TestSession](hijacker, key, config)
+	handler, err := NewHandler[*pb.TestSession](hijacker, key, config)
 	if err != nil {
 		t.Fatalf("NewHandler: %s", err)
 	}
@@ -309,7 +311,7 @@ func TestNoHijack(t *testing.T) {
 func TestGetSessionError(t *testing.T) {
 	ctx := context.Background()
 
-	_, err := GetSession[*TestSession](ctx)
+	_, err := GetSession[*pb.TestSession](ctx)
 	if err == nil {
 		t.Errorf("expected error when getting session from empty context")
 	}
@@ -323,7 +325,7 @@ func TestGetSessionError(t *testing.T) {
 func TestSetSessionError(t *testing.T) {
 	ctx := context.Background()
 
-	err := SetSession(ctx, &TestSession{Count: 1})
+	err := SetSession(ctx, &pb.TestSession{Count: 1})
 	if err == nil {
 		t.Errorf("expected error when setting session on empty context")
 	}
@@ -337,7 +339,7 @@ func TestSetSessionError(t *testing.T) {
 func TestClearSessionError(t *testing.T) {
 	ctx := context.Background()
 
-	err := ClearSession[*TestSession](ctx)
+	err := ClearSession[*pb.TestSession](ctx)
 	if err == nil {
 		t.Errorf("expected error when clearing session on empty context")
 	}
@@ -360,7 +362,7 @@ func TestSessionChangeDetection(t *testing.T) {
 	visitCount := 0
 	testHandler := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		visitCount++
-		session, err := GetSession[*TestSession](req.Context())
+		session, err := GetSession[*pb.TestSession](req.Context())
 		if err != nil {
 			t.Errorf("GetSession failed: %s", err)
 			rw.WriteHeader(500)
@@ -375,7 +377,7 @@ func TestSessionChangeDetection(t *testing.T) {
 		rw.WriteHeader(200)
 	})
 
-	handler, err := NewHandler[*TestSession](testHandler, key, config)
+	handler, err := NewHandler[*pb.TestSession](testHandler, key, config)
 	if err != nil {
 		t.Fatalf("NewHandler: %s", err)
 	}

@@ -4,9 +4,9 @@
 
 syntax = "proto3";
 
-package seshcookie;
+package pb;
 
-option go_package = "github.com/bpowers/seshcookie";
+option go_package = "github.com/bpowers/seshcookie/internal/pb";
 
 // TestSession is a simple session type for testing
 message TestSession {

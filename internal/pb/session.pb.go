@@ -8,7 +8,7 @@
 // 	protoc        v3.21.12
 // source: session.proto
 
-package seshcookie
+package pb
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -90,11 +90,10 @@ var File_session_proto protoreflect.FileDescriptor
 
 const file_session_proto_rawDesc = "" +
 	"\n" +
-	"\rsession.proto\x12\n" +
-	"seshcookie\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"z\n" +
+	"\rsession.proto\x12\x02pb\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"z\n" +
 	"\x0fSessionEnvelope\x127\n" +
 	"\tissued_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\x12.\n" +
-	"\apayload\x18\x02 \x01(\v2\x14.google.protobuf.AnyR\apayloadB\x1fZ\x1dgithub.com/bpowers/seshcookieb\x06proto3"
+	"\apayload\x18\x02 \x01(\v2\x14.google.protobuf.AnyR\apayloadB+Z)github.com/bpowers/seshcookie/internal/pbb\x06proto3"
 
 var (
 	file_session_proto_rawDescOnce sync.Once
@@ -110,13 +109,13 @@ func file_session_proto_rawDescGZIP() []byte {
 
 var file_session_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_session_proto_goTypes = []any{
-	(*SessionEnvelope)(nil),       // 0: seshcookie.SessionEnvelope
+	(*SessionEnvelope)(nil),       // 0: pb.SessionEnvelope
 	(*timestamppb.Timestamp)(nil), // 1: google.protobuf.Timestamp
 	(*anypb.Any)(nil),             // 2: google.protobuf.Any
 }
 var file_session_proto_depIdxs = []int32{
-	1, // 0: seshcookie.SessionEnvelope.issued_at:type_name -> google.protobuf.Timestamp
-	2, // 1: seshcookie.SessionEnvelope.payload:type_name -> google.protobuf.Any
+	1, // 0: pb.SessionEnvelope.issued_at:type_name -> google.protobuf.Timestamp
+	2, // 1: pb.SessionEnvelope.payload:type_name -> google.protobuf.Any
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name

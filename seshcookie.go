@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bpowers/seshcookie/internal/pb"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -173,7 +174,7 @@ func encodeProto[T proto.Message](session T, issuedAt *timestamppb.Timestamp) ([
 	}
 
 	// Create the envelope with issued timestamp
-	envelope := &SessionEnvelope{
+	envelope := &pb.SessionEnvelope{
 		IssuedAt: issuedAt,
 		Payload:  anyMsg,
 	}
@@ -197,7 +198,7 @@ func decodeProto[T proto.Message](encoded []byte, maxAge time.Duration) (T, *tim
 	}
 
 	// Unmarshal the envelope
-	var envelope SessionEnvelope
+	var envelope pb.SessionEnvelope
 	if err := proto.Unmarshal(encoded, &envelope); err != nil {
 		return zero, nil, fmt.Errorf("proto.Unmarshal: %w", err)
 	}

@@ -9,10 +9,10 @@ is transferred as part of the HTTP request (in a cookie), state can be
 seamlessly maintained between server restarts or load balancing. It's
 inspired by Beaker (http://pypi.python.org/pypi/Beaker), which
 provides a similar service for Python webapps. The cookies are
-authenticated and encrypted (using AES-GCM) with a key derived from a
-string provided to the NewHandler function. This makes seshcookie
-reliable and secure: session contents are opaque to users and not able
-to be manipulated or forged by third parties.
+authenticated and encrypted (using AES-GCM) with a key derived using
+Argon2id from a string provided to the NewHandler function. This makes
+seshcookie reliable and secure: session contents are opaque to users
+and not able to be manipulated or forged by third parties.
 
 # Version 2.0 - Protocol Buffers and Generics
 
@@ -115,6 +115,7 @@ unnecessary cookie updates and preserving the original issue timestamp.
 
 # Security Features
 
+  - Argon2id key derivation (memory-hard, GPU-resistant)
   - AES-GCM authenticated encryption
   - Server-side session expiry based on issue time
   - HTTPOnly and Secure cookie flags

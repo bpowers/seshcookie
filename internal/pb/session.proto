@@ -1,0 +1,25 @@
+// Copyright 2025 Bobby Powers. All rights reserved.
+// Use of this source code is governed by the MIT
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package pb;
+
+option go_package = "github.com/bpowers/seshcookie/internal/pb";
+
+import "google/protobuf/any.proto";
+import "google/protobuf/timestamp.proto";
+
+// SessionEnvelope wraps user session data with metadata.
+// The envelope contains:
+// - issued_at: timestamp when the session was created (for server-side expiry)
+// - payload: user's protobuf message wrapped in Any for type safety
+message SessionEnvelope {
+  // When this session was issued. Server uses this with MaxAge policy
+  // to determine if session has expired.
+  google.protobuf.Timestamp issued_at = 1;
+
+  // User's session data as a protobuf Any message.
+  google.protobuf.Any payload = 2;
+}

@@ -1,0 +1,21 @@
+// Copyright 2025 Bobby Powers. All rights reserved.
+// Use of this source code is governed by the MIT
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package main;
+
+option go_package = "github.com/bpowers/seshcookie/example;main";
+
+// UserSession represents the authenticated user session data
+message UserSession {
+  // Username of the authenticated user
+  string username = 1;
+
+  // Login timestamp (seconds since epoch)
+  int64 login_time = 2;
+
+  // User roles/permissions
+  repeated string roles = 3;
+}

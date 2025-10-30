@@ -6,23 +6,55 @@ seshcookie - cookie-based sessions for Go
 [![cover.run](https://cover.run/go/github.com/bpowers/seshcookie.svg?style=flat&tag=golang-1.10)](https://cover.run/go?tag=golang-1.10&repo=github.com%2Fbpowers%2Fseshcookie)
 [![Go Report Card](https://goreportcard.com/badge/github.com/bpowers/seshcookie)](https://goreportcard.com/report/github.com/bpowers/seshcookie)
 
-seshcookie enables you to associate session-state with HTTP requests
-while keeping your server stateless.  Because session-state is
-transferred as part of the HTTP request (in a cookie), state can be
-seamlessly maintained between server restarts or load balancing.  It's
-inspired by [Beaker](http://pypi.python.org/pypi/Beaker), which
-provides a similar service for Python webapps.  The cookies are
-authenticated and encrypted (using AES-GCM) with a key derived from a
-string provided to the `NewHandler` function.  This makes seshcookie
-reliable and secure: session contents are opaque to users and not able
-to be manipulated or forged by third parties.
+## Version 2.0 - Protocol Buffers and Generics
 
-examples
---------
+**⚠️ Breaking Change:** Version 2.0 is a complete rewrite using Protocol Buffers and Go generics. See [Migration](#migration-from-v1x) below.
 
-The simple example below returns different content based on whether
-the user has visited the site before or not:
+## Overview
 
+seshcookie enables you to associate session-state with HTTP requests while keeping your server stateless. Because session-state is transferred as part of the HTTP request (in a cookie), state can be seamlessly maintained between server restarts or load balancing. It's inspired by [Beaker](http://pypi.python.org/pypi/Beaker), which provides a similar service for Python webapps.
+
+The cookies are authenticated and encrypted (using AES-GCM) with a key derived from a string provided to the `NewHandler` function. This makes seshcookie reliable and secure: session contents are opaque to users and not able to be manipulated or forged by third parties.
+
+## Key Features
+
+- **Type-Safe Sessions**: Uses Protocol Buffers for strongly-typed session data
+- **Server-Side Expiry**: Sessions expire based on issue time, preventing client-side manipulation
+- **Secure by Default**: AES-GCM encryption, HTTPOnly and Secure flags
+- **Stateless**: No server-side session storage required
+- **Generic API**: Uses Go generics for compile-time type safety
+- **Change Detection**: Only updates cookies when session data actually changes
+
+## Installation
+
+```bash
+go get github.com/bpowers/seshcookie
+```
+
+## Quick Start
+
+### 1. Define Your Session Schema
+
+Create a `.proto` file:
+
+```protobuf
+syntax = "proto3";
+package myapp;
+option go_package = "myapp/pb";
+
+message UserSession {
+  string username = 1;
+  int32 visit_count = 2;
+}
+```
+
+Generate Go code:
+
+```bash
+protoc --go_out=. --go_opt=paths=source_relative session.proto
+```
+
+### 2. Use in Your Application
 
 ```Go
 package main
@@ -31,8 +63,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/bpowers/seshcookie"
+	"myapp/pb"
 )
 
 type VisitedHandler struct{}
@@ -42,40 +76,139 @@ func (h *VisitedHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	session := seshcookie.GetSession(req.Context())
+	// GetSession returns a valid protobuf message
+	session, err := seshcookie.GetSession[*pb.UserSession](req.Context())
+	if err != nil {
+		http.Error(rw, "Internal error", 500)
+		return
+	}
 
-	count, _ := session["count"].(int)
-	count++
-	session["count"] = count
+	// Modify session
+	session.VisitCount++
+
+	// Explicitly save changes
+	if err := seshcookie.SetSession(req.Context(), session); err != nil {
+		http.Error(rw, "Internal error", 500)
+		return
+	}
 
 	rw.Header().Set("Content-Type", "text/plain")
 	rw.WriteHeader(200)
-	if count == 1 {
+	if session.VisitCount == 1 {
 		rw.Write([]byte("this is your first visit, welcome!"))
 	} else {
-		rw.Write([]byte(fmt.Sprintf("page view #%d", count)))
+		rw.Write([]byte(fmt.Sprintf("page view #%d", session.VisitCount)))
 	}
 }
 
 func main() {
 	key := "session key, preferably a sequence of data from /dev/urandom"
-	http.Handle("/", seshcookie.NewHandler(
+
+	handler, err := seshcookie.NewHandler[*pb.UserSession](
 		&VisitedHandler{},
 		key,
-		&seshcookie.Config{HTTPOnly: true, Secure: false}))
+		&seshcookie.Config{
+			HTTPOnly: true,
+			Secure:   true,
+			MaxAge:   24 * time.Hour,
+		})
 
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	if err != nil {
+		log.Fatalf("NewHandler: %s", err)
+	}
+
+	if err := http.ListenAndServe(":8080", handler); err != nil {
 		log.Fatalf("ListenAndServe: %s", err)
 	}
 }
 ```
 
-There is a more detailed example in example/ which uses seshcookie to
-enforce authentication for a particular resource.  In particular, it
-shows how you can embed (or stack) multiple http.Handlers to get the
-behavior you want.
+## API Reference
 
-license
--------
+### Creating a Handler
+
+```go
+handler, err := seshcookie.NewHandler[*YourProtoType](
+    yourHandler,
+    encryptionKey,
+    &seshcookie.Config{
+        CookieName: "session",      // cookie name
+        CookiePath: "/",             // cookie path
+        HTTPOnly:   true,            // prevent JavaScript access
+        Secure:     true,            // only send over HTTPS
+        MaxAge:     24 * time.Hour,  // server-side expiry
+    })
+```
+
+### Session Operations
+
+```go
+// Get session (auto-creates if empty)
+session, err := seshcookie.GetSession[*YourProtoType](ctx)
+
+// Modify and save session
+session.Field = value
+err := seshcookie.SetSession(ctx, session)
+
+// Clear session (deletes cookie)
+err := seshcookie.ClearSession[*YourProtoType](ctx)
+```
+
+## Security Considerations
+
+1. **Use Strong Keys**: Generate encryption keys from a cryptographically secure source (e.g., `/dev/urandom`)
+2. **Enable HTTPS**: Always set `Secure: true` in production
+3. **Set HTTPOnly**: Prevents XSS attacks from stealing session cookies
+4. **Configure MaxAge**: Sessions expire server-side after this duration
+5. **CSRF Protection**: Implement CSRF tokens for state-changing operations
+
+## How It Works
+
+1. **Envelope Pattern**: Your protobuf message is wrapped in a `SessionEnvelope` that includes:
+   - `issued_at`: Timestamp when session was created
+   - `payload`: Your protobuf message as a `google.protobuf.Any`
+
+2. **Encryption**: The envelope is encrypted using AES-GCM with a unique nonce per cookie
+
+3. **Expiry**: On each request, the server validates that `issued_at + MaxAge > now`
+
+4. **Change Detection**: Sessions are only re-written to cookies when `SetSession` is called, and the session hash changes
+
+## Migration from v1.x
+
+Version 2.0 is a breaking change. Key differences:
+
+| v1.x | v2.x |
+|------|------|
+| `Session map[string]interface{}` | Strongly-typed protobuf messages |
+| `GetSession(ctx) Session` | `GetSession[T](ctx) (T, error)` |
+| Direct map modification | Explicit `SetSession(ctx, session)` |
+| `NewHandler(h, key, cfg) *Handler` | `NewHandler[T](h, key, cfg) (*Handler[T], error)` |
+| No expiry enforcement | Server-side expiry via `MaxAge` |
+| GOB encoding | Protobuf encoding |
+
+**Migration steps:**
+
+1. Define your session data as a protobuf message
+2. Generate Go code with `protoc`
+3. Update handler creation to use generic type parameter
+4. Change session access to use `GetSession[T]` and `SetSession`
+5. Add error handling for `NewHandler` and session operations
+
+## Example
+
+A complete authentication example is available in the `example/` directory, demonstrating:
+- Login/logout flows
+- Protobuf session messages
+- Role-based access control
+- Proper error handling
+
+## Performance
+
+- **Minimal overhead**: Only re-encodes cookies when session changes
+- **No server storage**: Truly stateless, scales horizontally
+- **Efficient encoding**: Protobuf is compact and fast
+
+## License
 
 seshcookie is offered under the MIT license, see LICENSE for details.

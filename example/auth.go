@@ -1,4 +1,4 @@
-// Copyright 2017 Bobby Powers. All rights reserved.
+// Copyright 2025 Bobby Powers. All rights reserved.
 // Use of this source code is governed by the MIT
 // license that can be found in the LICENSE file.
 package main
@@ -6,6 +6,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/bpowers/seshcookie"
 )
@@ -37,11 +38,16 @@ type AuthHandler struct {
 // submission POSTs to "/login".  If the login was successful, the
 // user is redirected to "/".
 //
-// Logging out is simply a matter of clearing the 'user' key from the
-// session map and redirecting to "/login"
+// Logging out is simply a matter of clearing the session and
+// redirecting to "/login"
 func (h *AuthHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	session, err := seshcookie.GetSession[*UserSession](req.Context())
+	if err != nil {
+		log.Printf("GetSession error: %s\n", err)
+		http.Error(rw, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
-	session := seshcookie.GetSession(req.Context())
 	log.Printf("using session: %#v\n", session)
 
 	switch req.URL.Path {
@@ -64,16 +70,31 @@ func (h *AuthHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 
 		log.Printf("authorized %s\n", user)
-		session["user"] = user
+
+		// Create and set the session with protobuf
+		session.Username = user
+		session.LoginTime = time.Now().Unix()
+		session.Roles = []string{"user"}
+
+		if err := seshcookie.SetSession(req.Context(), session); err != nil {
+			log.Printf("SetSession error: %s\n", err)
+			http.Error(rw, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
 		http.Redirect(rw, req, "/", http.StatusFound)
 		return
+
 	case "/logout":
-		delete(session, "user")
+		if err := seshcookie.ClearSession[*UserSession](req.Context()); err != nil {
+			log.Printf("ClearSession error: %s\n", err)
+		}
 		http.Redirect(rw, req, "/login", http.StatusFound)
 		return
 	}
 
-	if _, ok := session["user"]; !ok {
+	// Check if user is authenticated
+	if session.Username == "" {
 		http.Redirect(rw, req, "/login", http.StatusFound)
 		return
 	}
@@ -83,7 +104,7 @@ func (h *AuthHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 func main() {
 	// Here we have 3 levels of handlers:
-	// 1 - session handler
+	// 1 - session handler (with generic protobuf type)
 	// 2 - auth handler
 	// 3 - file server
 	//
@@ -93,17 +114,26 @@ func main() {
 	// sure the session is serialized when the response header is
 	// written.  After deserializing the incoming session, the
 	// request is passed to AuthHandler (defined above).
-	// AuthHandler directly serves requests for /login, /logout,
-	// and /session.  Requests for any other resource require the
-	// session map to have a user key, which is obtained by
-	// logging in.  If the user key is present, the request is
-	// passed to the FileServer, otherwise the browser is
-	// redirected to the login page.
-	handler := seshcookie.NewHandler(
+	// AuthHandler directly serves requests for /login and /logout.
+	// Requests for any other resource require the session to have
+	// a username set, which is obtained by logging in. If the
+	// username is present, the request is passed to the FileServer,
+	// otherwise the browser is redirected to the login page.
+
+	handler, err := seshcookie.NewHandler[*UserSession](
 		&AuthHandler{http.FileServer(contentDir), userDb},
 		"session key, preferably a sequence of data from /dev/urandom",
-		&seshcookie.Config{HTTPOnly: true, Secure: false})
+		&seshcookie.Config{
+			HTTPOnly: true,
+			Secure:   false,
+			MaxAge:   24 * time.Hour,
+		})
 
+	if err != nil {
+		log.Fatalf("NewHandler: %s", err)
+	}
+
+	log.Println("Starting server on :8080")
 	if err := http.ListenAndServe(":8080", handler); err != nil {
 		log.Fatalf("ListenAndServe: %s", err)
 	}

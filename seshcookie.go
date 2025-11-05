@@ -441,6 +441,12 @@ func (s *responseWriter[T]) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return nil, nil, fmt.Errorf("seshcookie doesn't support hijacking")
 }
 
+func (s *responseWriter[T]) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func (h *Handler[T]) getCookieSession(req *http.Request) (T, []byte, *timestamppb.Timestamp) {
 	var zero T
 

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bpowers/seshcookie"
+	"github.com/bpowers/seshcookie/v3"
 )
 
 var contentDir http.Dir = "./secured"

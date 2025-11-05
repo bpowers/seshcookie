@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bpowers/seshcookie/internal/pb"
+	"github.com/bpowers/seshcookie/v3/internal/pb"
 )
 
 const testCookieName = "testcookiepleaseignore"

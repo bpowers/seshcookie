@@ -2,13 +2,13 @@ seshcookie - cookie-based sessions for Go
 =========================================
 
 [![Build Status](https://travis-ci.org/bpowers/seshcookie.svg?branch=master)](https://travis-ci.org/bpowers/seshcookie)
-[![GoDoc](https://godoc.org/github.com/bpowers/seshcookie?status.svg)](https://godoc.org/github.com/bpowers/seshcookie)
-[![cover.run](https://cover.run/go/github.com/bpowers/seshcookie.svg?style=flat&tag=golang-1.10)](https://cover.run/go?tag=golang-1.10&repo=github.com%2Fbpowers%2Fseshcookie)
-[![Go Report Card](https://goreportcard.com/badge/github.com/bpowers/seshcookie)](https://goreportcard.com/report/github.com/bpowers/seshcookie)
+[![GoDoc](https://godoc.org/github.com/bpowers/seshcookie/v3?status.svg)](https://godoc.org/github.com/bpowers/seshcookie/v3)
+[![cover.run](https://cover.run/go/github.com/bpowers/seshcookie/v3.svg?style=flat&tag=golang-1.10)](https://cover.run/go?tag=golang-1.10&repo=github.com%2Fbpowers%2Fseshcookie)
+[![Go Report Card](https://goreportcard.com/badge/github.com/bpowers/seshcookie/v3)](https://goreportcard.com/report/github.com/bpowers/seshcookie/v3)
 
-## Version 2.0 - Protocol Buffers and Generics
+## Version 3.0 - Go Module v3
 
-**⚠️ Breaking Change:** Version 2.0 is a complete rewrite using Protocol Buffers and Go generics. See [Migration](#migration-from-v1x) below.
+**⚠️ Breaking Change:** Version 3.0 updates the module path to follow Go's semantic import versioning. The import path is now `github.com/bpowers/seshcookie/v3`. See [Migration](#migration-from-v2x) below.
 
 ## Overview
 
@@ -28,7 +28,7 @@ The cookies are authenticated and encrypted (using AES-GCM) with a key derived f
 ## Installation
 
 ```bash
-go get github.com/bpowers/seshcookie
+go get github.com/bpowers/seshcookie/v3
 ```
 
 ## Quick Start
@@ -65,7 +65,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bpowers/seshcookie"
+	"github.com/bpowers/seshcookie/v3"
 	"myapp/pb"
 )
 
@@ -174,11 +174,22 @@ err := seshcookie.ClearSession[*YourProtoType](ctx)
 
 4. **Change Detection**: Sessions are only re-written to cookies when `SetSession` is called, and the session hash changes
 
+## Migration from v2.x
+
+Version 3.0 updates the module path to comply with Go's semantic import versioning requirements:
+
+**Migration steps:**
+
+1. Update your import statements from `github.com/bpowers/seshcookie` to `github.com/bpowers/seshcookie/v3`
+2. Run `go mod tidy` to update your dependencies
+
+That's it! The API remains the same as v2.x.
+
 ## Migration from v1.x
 
-Version 2.0 is a breaking change. Key differences:
+Version 2.0/3.0 is a breaking change from v1.x. Key differences:
 
-| v1.x | v2.x |
+| v1.x | v2.x/v3.x |
 |------|------|
 | `Session map[string]interface{}` | Strongly-typed protobuf messages |
 | `GetSession(ctx) Session` | `GetSession[T](ctx) (T, error)` |
@@ -189,11 +200,12 @@ Version 2.0 is a breaking change. Key differences:
 
 **Migration steps:**
 
-1. Define your session data as a protobuf message
-2. Generate Go code with `protoc`
-3. Update handler creation to use generic type parameter
-4. Change session access to use `GetSession[T]` and `SetSession`
-5. Add error handling for `NewHandler` and session operations
+1. Update imports to `github.com/bpowers/seshcookie/v3`
+2. Define your session data as a protobuf message
+3. Generate Go code with `protoc`
+4. Update handler creation to use generic type parameter
+5. Change session access to use `GetSession[T]` and `SetSession`
+6. Add error handling for `NewHandler` and session operations
 
 ## Example
 

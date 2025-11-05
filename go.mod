@@ -1,4 +1,4 @@
-module github.com/bpowers/seshcookie
+module github.com/bpowers/seshcookie/v3
 
 go 1.24.7
 

@@ -27,7 +27,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/bpowers/seshcookie/internal/pb"
+	"github.com/bpowers/seshcookie/v3/internal/pb"
 )
 
 const (
@@ -535,5 +535,52 @@ func NewMiddleware[T proto.Message](key string, config *Config) (func(http.Handl
 			Config:  *config,
 			encKey:  encKey,
 		}
+	}, nil
+}
+
+// NewHandler returns a new seshcookie Handler with a given inner handler,
+// encryption key, and configuration. The type parameter T specifies the
+// protobuf message type to use for sessions.
+//
+// key must be non-empty and is used to derive the encryption key.
+// config can be nil, in which case DefaultConfig is used.
+//
+// Example:
+//
+//	handler, err := seshcookie.NewHandler[*UserSession](innerHandler, "my-secret-key", nil)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	http.ListenAndServe(":8080", handler)
+func NewHandler[T proto.Message](handler http.Handler, key string, config *Config) (*Handler[T], error) {
+	if key == "" {
+		return nil, errors.New("encryption key must not be empty")
+	}
+
+	encKey, err := deriveKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("deriveKey: %w", err)
+	}
+
+	// if the user hasn't specified a config, use the package's
+	// default one
+	if config == nil {
+		configCopy := *DefaultConfig
+		config = &configCopy
+	}
+
+	if config.CookieName == "" {
+		config.CookieName = defaultCookieName
+	}
+
+	if config.MaxAge == 0 {
+		config.MaxAge = DefaultConfig.MaxAge
+	}
+
+	return &Handler[T]{
+		Handler: handler,
+		Config:  *config,
+		encKey:  encKey,
 	}, nil
 }

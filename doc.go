@@ -14,9 +14,10 @@ Argon2id from a string provided to the NewHandler function. This makes
 seshcookie reliable and secure: session contents are opaque to users
 and not able to be manipulated or forged by third parties.
 
-# Version 2.0 - Protocol Buffers and Generics
+# Version 3.0 - Go Module v3
 
-Version 2.0 introduces a new API based on Protocol Buffers and Go generics.
+Version 3.0 updates the module path to follow Go's semantic import versioning (v3).
+Version 2.0/3.0 introduces a new API based on Protocol Buffers and Go generics.
 Session data is now strongly-typed using protobuf messages, providing
 better type safety and schema evolution. The library uses an envelope
 pattern where metadata (like issue time) is stored separately from the
@@ -47,7 +48,7 @@ Then use seshcookie with Go generics:
 		"log"
 		"time"
 
-		"github.com/bpowers/seshcookie"
+		"github.com/bpowers/seshcookie/v3"
 		"myapp/pb"  // your generated protobuf package
 	)
 

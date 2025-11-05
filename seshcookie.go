@@ -22,11 +22,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bpowers/seshcookie/internal/pb"
 	"golang.org/x/crypto/argon2"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/bpowers/seshcookie/internal/pb"
 )
 
 const (
@@ -81,10 +82,10 @@ func deriveKey(key string) ([]byte, error) {
 
 	// Argon2id parameters (OWASP recommendations)
 	const (
-		time    = 3          // 3 iterations
-		memory  = 16 * 1024  // 16 MB in KiB
-		threads = 4          // 4 parallel threads
-		keyLen  = 16         // 16 bytes for AES-128
+		time    = 3         // 3 iterations
+		memory  = 16 * 1024 // 16 MB in KiB
+		threads = 4         // 4 parallel threads
+		keyLen  = 16        // 16 bytes for AES-128
 	)
 
 	// Derive key using Argon2id
@@ -113,7 +114,7 @@ type contextKey[T proto.Message] struct{}
 type sessionData[T proto.Message] struct {
 	session  T
 	hash     []byte
-	changed  bool // tracks if SetSession was called
+	changed  bool                   // tracks if SetSession was called
 	issuedAt *timestamppb.Timestamp // preserve original issue time
 }
 
@@ -482,21 +483,22 @@ func (h *Handler[T]) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	h.Handler.ServeHTTP(sessionWriter, req)
 }
 
-// NewHandler creates a new seshcookie Handler with a given encryption
-// key and configuration. The type parameter T specifies the protobuf
-// message type to use for sessions.
+// NewMiddleware returns a middleware constructor for a new seshcookie
+// Handler with a given encryption key and configuration. The type
+// parameter T specifies the protobuf message type to use for sessions.
 //
 // key must be non-empty and is used to derive the encryption key.
 // config can be nil, in which case DefaultConfig is used.
 //
 // Example:
 //
-//	handler := seshcookie.NewHandler[*UserSession](
-//	    http.HandlerFunc(myHandler),
-//	    "my-secret-key",
-//	    nil,
-//	)
-func NewHandler[T proto.Message](handler http.Handler, key string, config *Config) (*Handler[T], error) {
+//	mw, err := seshcookie.NewHandler[*UserSession]("my-secret-key", nil)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+//	http.Handle("/", mw(http.HandlerFunc(myHandler))
+func NewMiddleware[T proto.Message](key string, config *Config) (func(http.Handler) http.Handler, error) {
 	if key == "" {
 		return nil, errors.New("encryption key must not be empty")
 	}
@@ -521,9 +523,11 @@ func NewHandler[T proto.Message](handler http.Handler, key string, config *Confi
 		config.MaxAge = DefaultConfig.MaxAge
 	}
 
-	return &Handler[T]{
-		Handler: handler,
-		Config:  *config,
-		encKey:  encKey,
+	return func(next http.Handler) http.Handler {
+		return &Handler[T]{
+			Handler: next,
+			Config:  *config,
+			encKey:  encKey,
+		}
 	}, nil
 }

@@ -128,7 +128,6 @@ func main() {
 			Secure:   false,
 			MaxAge:   24 * time.Hour,
 		})
-
 	if err != nil {
 		log.Fatalf("NewHandler: %s", err)
 	}

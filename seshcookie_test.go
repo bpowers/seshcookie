@@ -229,10 +229,11 @@ func TestHandler(t *testing.T) {
 		}
 	})
 
-	handler, err := NewHandler[*pb.TestSession](visitHandler, key, config)
+	mw, err := NewMiddleware[*pb.TestSession](key, config)
 	if err != nil {
-		t.Fatalf("NewHandler: %s", err)
+		t.Fatalf("NewMiddleware: %s", err)
 	}
+	handler := mw(visitHandler)
 
 	// First request - no cookie
 	req := httptest.NewRequest("GET", "/", nil)
@@ -276,10 +277,11 @@ func TestHandler(t *testing.T) {
 
 	// create a new handler to ensure decoding the cookie isn't
 	// dependent on local state
-	handler, err = NewHandler[*pb.TestSession](visitHandler, key, config)
+	mw, err = NewMiddleware[*pb.TestSession](key, config)
 	if err != nil {
-		t.Fatalf("NewHandler: %s", err)
+		t.Fatalf("NewMiddleware: %s", err)
 	}
+	handler = mw(visitHandler)
 
 	handler.ServeHTTP(w, req)
 
@@ -328,9 +330,9 @@ func TestHandler(t *testing.T) {
 	}
 }
 
-// TestEmptyKeyReturnsError tests that NewHandler returns an error for empty key
+// TestEmptyKeyReturnsError tests that NewMiddleware returns an error for empty key
 func TestEmptyKeyReturnsError(t *testing.T) {
-	_, err := NewHandler[*pb.TestSession](http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {}), "", nil)
+	_, err := NewMiddleware[*pb.TestSession]("", nil)
 
 	if err == nil {
 		t.Errorf("expected error for empty key")
@@ -367,12 +369,12 @@ func TestNoHijack(t *testing.T) {
 		}
 	})
 
-	handler, err := NewHandler[*pb.TestSession](hijacker, key, config)
+	mw, err := NewMiddleware[*pb.TestSession](key, config)
 	if err != nil {
-		t.Fatalf("NewHandler: %s", err)
+		t.Fatalf("NewMiddleware: %s", err)
 	}
 
-	handler.ServeHTTP(w, req)
+	mw(hijacker).ServeHTTP(w, req)
 
 	if !hijackFailed {
 		t.Fatalf("expected Hijack to fail")
@@ -449,10 +451,11 @@ func TestSessionChangeDetection(t *testing.T) {
 		rw.WriteHeader(200)
 	})
 
-	handler, err := NewHandler[*pb.TestSession](testHandler, key, config)
+	mw, err := NewMiddleware[*pb.TestSession](key, config)
 	if err != nil {
-		t.Fatalf("NewHandler: %s", err)
+		t.Fatalf("NewMiddleware: %s", err)
 	}
+	handler := mw(testHandler)
 
 	// First request
 	req := httptest.NewRequest("GET", "/", nil)

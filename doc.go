@@ -130,10 +130,12 @@ session type with strongly-typed protobuf messages. The API surface has
 changed significantly:
 
 v1.x:
+
 	session := seshcookie.GetSession(ctx)
 	session["count"] = 1
 
 v2.x:
+
 	session, err := seshcookie.GetSession[*MyProto](ctx)
 	session.Count = 1
 	seshcookie.SetSession(ctx, session)

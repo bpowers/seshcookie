@@ -14,7 +14,7 @@ seshcookie - cookie-based sessions for Go
 
 ## What is seshcookie?
 
-seshcookie keeps per-user session data inside a single AES-GCM encrypted cookie. Each request gets a strongly-typed protobuf message via `context.Context`, so handlers can mutate session state without touching shared storage. Keys are derived using Argon2id; provide a high-entropy secret, and seshcookie handles encryption, authentication, expiry, and change detection for you.
+seshcookie enables you to associate session-state with HTTP requests while keeping your server stateless. Session data travels with each request inside a single AES-GCM encrypted cookie, so restarts, blue/green deploys, or load-balanced replicas do not require sticky routing or a cache tier. The package is inspired by [Beaker](http://pypi.python.org/pypi/Beaker) and mirrors the authoritative `go doc github.com/bpowers/seshcookie/v3` description: cookies are authenticated/encrypted with a key derived via Argon2id every time `NewHandler`/`NewMiddleware` is constructed. Each request gets a strongly-typed protobuf message via `context.Context`; mutate it, call `SetSession`, and seshcookie handles encryption, authentication, expiry, and change detection for you.
 
 ## When should you use it?
 
@@ -124,24 +124,17 @@ if shouldLogout(req) {
 }
 ```
 
-## API Reference
+## API Reference (mirrors `go doc`)
 
-### Handler or middleware constructors
+`go doc github.com/bpowers/seshcookie/v3` is the source of truth for exported API semantics. The key entry points are:
 
-- `NewHandler[T proto.Message](handler http.Handler, key string, cfg *Config) (*Handler[T], error)` wraps an existing handler.
-- `NewMiddleware[T proto.Message](key string, cfg *Config) (func(http.Handler) http.Handler, error)` returns a middleware constructor you can apply to routers or existing middleware chains.
+- `GetSession[T proto.Message](ctx context.Context) (T, error)` retrieves the typed protobuf message from context, auto-creating a zero instance (never `nil`) if no cookie is present. It returns `ErrNoSession` if the context was not seeded by seshcookie.
+- `SetSession[T proto.Message](ctx context.Context, session T) error` marks the session as changed so the cookie is rewritten at the end of the request.
+- `ClearSession[T proto.Message](ctx context.Context) error` deletes the session and instructs the response writer to expire the cookie.
+- `NewHandler[T proto.Message](handler http.Handler, key string, cfg *Config) (*Handler[T], error)` and `NewMiddleware[T proto.Message](key string, cfg *Config) (func(http.Handler) http.Handler, error)` wrap an existing `http.Handler`/router. They derive an AES key from `key` using Argon2id and store configuration in a `Handler[T]` that you can pass directly to `http.ListenAndServe`.
+- `DefaultConfig` exposes the defaults used when `cfg` is `nil` (cookie name `session`, path `/`, `HTTPOnly: true`, `Secure: true`, `MaxAge: 24 * time.Hour`).
 
-Both helpers derive the AES key from the provided string using Argon2id. Pass `nil` for `cfg` to start from `DefaultConfig` (Secure + HTTPOnly + 24h expiry).
-
-### Session helpers
-
-```go
-session, err := seshcookie.GetSession[*YourProto](ctx) // returns zero-value message if cookie missing
-err = seshcookie.SetSession(ctx, session)             // mark as changed so cookie rewrites on response
-err = seshcookie.ClearSession[*YourProto](ctx)        // delete cookie, preserving statelessness
-```
-
-`GetSession` returns `ErrNoSession` if used outside a seshcookie-wrapped handler. Sessions are buffered in context and only marshaled back into cookies after `SetSession` or `ClearSession` is called, so read-only requests incur no cookie writes.
+Sessions live in request context until you call `SetSession` or `ClearSession`, so read-only requests avoid cookie writes and preserve the original `issued_at` timestamp.
 
 ### Config reference
 

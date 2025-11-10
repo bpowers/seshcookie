@@ -1,17 +1,10 @@
 seshcookie - cookie-based sessions for Go
 =========================================
 
-[![Build Status](https://travis-ci.org/bpowers/seshcookie.svg?branch=master)](https://travis-ci.org/bpowers/seshcookie)
 [![GoDoc](https://godoc.org/github.com/bpowers/seshcookie/v3?status.svg)](https://godoc.org/github.com/bpowers/seshcookie/v3)
-[![cover.run](https://cover.run/go/github.com/bpowers/seshcookie/v3.svg?style=flat&tag=golang-1.10)](https://cover.run/go?tag=golang-1.10&repo=github.com%2Fbpowers%2Fseshcookie)
 [![Go Report Card](https://goreportcard.com/badge/github.com/bpowers/seshcookie/v3)](https://goreportcard.com/report/github.com/bpowers/seshcookie/v3)
 
 > Stateless, encrypted, type-safe session cookies for Go's `net/http` stack.
-
-## Version 3.0 - Go Module v3
-
-**⚠️ Breaking Change:** Version 3.0 updates the module path to follow Go's semantic import versioning. Import the package as `github.com/bpowers/seshcookie/v3`. See [Migration](#migration-from-v2x) below. The API matches v2.x (generics + protobuf sessions), so only the module path changes when upgrading from v2.
-
 ## What is seshcookie?
 
 seshcookie enables you to associate session-state with HTTP requests while keeping your server stateless. Session data travels with each request inside a single AES-GCM encrypted cookie, so restarts, blue/green deploys, or load-balanced replicas do not require sticky routing or a cache tier. The package is inspired by [Beaker](http://pypi.python.org/pypi/Beaker) and mirrors the authoritative `go doc github.com/bpowers/seshcookie/v3` description: cookies are authenticated/encrypted with a key derived via Argon2id every time `NewHandler`/`NewMiddleware` is constructed. Each request gets a strongly-typed protobuf message via `context.Context`; mutate it, call `SetSession`, and seshcookie handles encryption, authentication, expiry, and change detection for you.

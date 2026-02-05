@@ -19,6 +19,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -37,6 +38,10 @@ const (
 )
 
 const defaultCookieName = "session"
+
+// versionPrefix is prepended to all Go-format cookies for
+// unambiguous format detection during JS migration.
+const versionPrefix = "sc1_"
 
 var (
 	// DefaultConfig is used as the configuration if a nil config
@@ -153,6 +158,7 @@ type Handler[T proto.Message] struct {
 	http.Handler
 	Config Config
 	encKey []byte
+	opts   handlerOptions[T]
 }
 
 // GetSession retrieves the session from the context.
@@ -324,7 +330,7 @@ func encodeCookie[T proto.Message](session T, encKey []byte, maxAge time.Duratio
 
 	ciphertext := aeadCipher.Seal(nonce, nonce, plaintext, nil)
 
-	return base64.StdEncoding.EncodeToString(ciphertext), protoHash.Sum(nil), nil
+	return versionPrefix + base64.StdEncoding.EncodeToString(ciphertext), protoHash.Sum(nil), nil
 }
 
 // decodeCookie decrypts a base64-encoded cookie using AES-GCM for
@@ -332,6 +338,8 @@ func encodeCookie[T proto.Message](session T, encKey []byte, maxAge time.Duratio
 // Returns the session, hash, and original issuedAt timestamp.
 func decodeCookie[T proto.Message](encoded string, encKey []byte, maxAge time.Duration) (T, []byte, *timestamppb.Timestamp, error) {
 	var zero T
+
+	encoded = strings.TrimPrefix(encoded, versionPrefix)
 
 	cookie, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
@@ -474,17 +482,29 @@ func (h *Handler[T]) getCookieSession(req *http.Request) (T, []byte, *timestampp
 		return zero, nil, nil
 	}
 
-	session, protoHash, issuedAt, err := decodeCookie[T](cookie.Value, h.encKey, h.Config.MaxAge)
-	if err != nil {
-		// Invalid cookie or expired session - treat as no session
-		// Log for debugging but don't expose to user
-		if errors.Is(err, ErrSessionExpired) {
-			// Silently ignore expired sessions
+	value := cookie.Value
+
+	if strings.HasPrefix(value, versionPrefix) {
+		// Go-format cookie: strip prefix and decode
+		value = strings.TrimPrefix(value, versionPrefix)
+		session, protoHash, issuedAt, err := decodeCookie[T](value, h.encKey, h.Config.MaxAge)
+		if err != nil {
+			return zero, nil, nil
 		}
-		return zero, nil, nil
+		return session, protoHash, issuedAt
 	}
 
-	return session, protoHash, issuedAt
+	// No prefix: try JS migration if configured
+	if h.opts.migrate != nil {
+		session, err := h.decodeJSSession(value)
+		if err != nil {
+			return zero, nil, nil
+		}
+		// Return with nil hash so writeCookie always rewrites as Go format
+		return session, nil, nil
+	}
+
+	return zero, nil, nil
 }
 
 func (h *Handler[T]) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
@@ -523,7 +543,7 @@ func (h *Handler[T]) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 //	}
 //
 //	http.Handle("/", mw(http.HandlerFunc(myHandler))
-func NewMiddleware[T proto.Message](key string, config *Config) (func(http.Handler) http.Handler, error) {
+func NewMiddleware[T proto.Message](key string, config *Config, opts ...Option[T]) (func(http.Handler) http.Handler, error) {
 	if key == "" {
 		return nil, errors.New("encryption key must not be empty")
 	}
@@ -548,11 +568,17 @@ func NewMiddleware[T proto.Message](key string, config *Config) (func(http.Handl
 		config.MaxAge = DefaultConfig.MaxAge
 	}
 
+	var options handlerOptions[T]
+	for _, o := range opts {
+		o(&options)
+	}
+
 	return func(next http.Handler) http.Handler {
 		return &Handler[T]{
 			Handler: next,
 			Config:  *config,
 			encKey:  encKey,
+			opts:    options,
 		}
 	}, nil
 }
@@ -572,7 +598,7 @@ func NewMiddleware[T proto.Message](key string, config *Config) (func(http.Handl
 //	}
 //
 //	http.ListenAndServe(":8080", handler)
-func NewHandler[T proto.Message](handler http.Handler, key string, config *Config) (*Handler[T], error) {
+func NewHandler[T proto.Message](handler http.Handler, key string, config *Config, opts ...Option[T]) (*Handler[T], error) {
 	if key == "" {
 		return nil, errors.New("encryption key must not be empty")
 	}
@@ -597,9 +623,15 @@ func NewHandler[T proto.Message](handler http.Handler, key string, config *Confi
 		config.MaxAge = DefaultConfig.MaxAge
 	}
 
+	var options handlerOptions[T]
+	for _, o := range opts {
+		o(&options)
+	}
+
 	return &Handler[T]{
 		Handler: handler,
 		Config:  *config,
 		encKey:  encKey,
+		opts:    options,
 	}, nil
 }

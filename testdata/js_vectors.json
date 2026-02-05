@@ -1,0 +1,32 @@
+{
+  "vectors": [
+    {
+      "description": "simple session",
+      "key": "test-secret-key",
+      "derived_key_hex": "2ceac6f36363c6246a64cca805cd43ca",
+      "session_json": "{\"count\":42,\"user\":\"alice\"}",
+      "cookie_value": "3aa+aXz569GDmpKf-IWlwpFpnMTSYlkpl/yDmNibQGx1YibFd6HJJ-DRzIWfGM+/+MN3hJMRIYFw=="
+    },
+    {
+      "description": "single string field",
+      "key": "another-key-here",
+      "derived_key_hex": "b279b47a71470f669a4e0135e8282b5d",
+      "session_json": "{\"name\":\"bob\"}",
+      "cookie_value": "fOxSUbi6kDmqSYzW-5qHkcg3FaPkCNxtNPcM=-Q8kBpP7/iPb4vKfmujGyIg=="
+    },
+    {
+      "description": "nested object with arrays",
+      "key": "test-secret-key",
+      "derived_key_hex": "2ceac6f36363c6246a64cca805cd43ca",
+      "session_json": "{\"user\":{\"id\":1,\"name\":\"charlie\",\"roles\":[\"admin\",\"editor\"]},\"metadata\":{\"created\":\"2025-01-01\",\"tags\":[\"important\",\"reviewed\"]}}",
+      "cookie_value": "jeYobrUmpTOmF/mP-P2chHQUCNIEDPYeByYHFSm3Z1fPVgEq3g0pVg8jo4T5yx6/6hZZxoylv+ElAqOY67rp7/qVvLvuOydWCOLYD72hBooAe6G0zq943oYHujvOK5j0XLs2Ru52G/z3Id9PkLcO3pzsAwy58bazDb+rPmuqntRXw7uVLZQIOkws+fdp1-GRNIFkqvfjSWEWExjBpx2Q=="
+    },
+    {
+      "description": "unicode content",
+      "key": "unicode-key-test",
+      "derived_key_hex": "b5a9411b8786ccbecab58eaaa8d79437",
+      "session_json": "{\"greeting\":\"你好世界\",\"emoji\":\"🌟🌈\",\"name\":\"René\"}",
+      "cookie_value": "zaionMRbswrbu0QD-FIYLvk+PPy3s/hoUKrGA7XTcLLtymxDQOTduKCT2YjrWpuenUfOmOiit7t4dZoxeAUB5zxXWGlfFpw26pw==-7soksjLXBsekSG6AOQOcKA=="
+    }
+  ]
+}

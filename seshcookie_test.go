@@ -665,6 +665,36 @@ func TestReaderFromProxying(t *testing.T) {
 	})
 }
 
+// TestVersionPrefix tests that encoded cookies have the sc1_ prefix and roundtrip correctly
+func TestVersionPrefix(t *testing.T) {
+	encKey := createKey()
+	maxAge := 24 * time.Hour
+
+	orig := &pb.TestSession{
+		Count: 7,
+		User:  "prefix-test",
+	}
+
+	encoded, _, err := encodeCookie(orig, encKey, maxAge, nil)
+	if err != nil {
+		t.Fatalf("encodeCookie: %v", err)
+	}
+
+	if !strings.HasPrefix(encoded, versionPrefix) {
+		t.Errorf("encoded cookie %q does not start with %q", encoded, versionPrefix)
+	}
+
+	decoded, _, _, err := decodeCookie[*pb.TestSession](encoded, encKey, maxAge)
+	if err != nil {
+		t.Fatalf("decodeCookie: %v", err)
+	}
+
+	if decoded.Count != orig.Count || decoded.User != orig.User {
+		t.Errorf("roundtrip mismatch: got {%d, %s}, want {%d, %s}",
+			decoded.Count, decoded.User, orig.Count, orig.User)
+	}
+}
+
 // TestSessionChangeDetection tests that unchanged sessions aren't re-written
 func TestSessionChangeDetection(t *testing.T) {
 	key := createKeyString()

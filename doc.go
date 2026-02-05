@@ -140,5 +140,33 @@ v2.x:
 	session, err := seshcookie.GetSession[*MyProto](ctx)
 	session.Count = 1
 	seshcookie.SetSession(ctx, session)
+
+# Migration from seshcookie-js
+
+If you are migrating from the JavaScript/TypeScript seshcookie package,
+use [WithMigration] to transparently convert JS cookies to Go format.
+The JS and Go implementations use different key derivation and wire
+formats, so migration requires providing the JS key and a conversion
+function.
+
+	convert := func(jsonData []byte) (*pb.MySession, error) {
+	    var raw map[string]any
+	    if err := json.Unmarshal(jsonData, &raw); err != nil {
+	        return nil, err
+	    }
+	    return &pb.MySession{
+	        User: raw["user"].(string),
+	    }, nil
+	}
+
+	handler, err := seshcookie.NewHandler[*pb.MySession](
+	    inner, goKey, nil,
+	    seshcookie.WithMigration[*pb.MySession](jsKey, convert),
+	)
+
+On the first request with a JS cookie, the handler decrypts it,
+converts the JSON to protobuf via the provided function, and writes
+back a Go-format cookie (prefixed with "sc1_"). Subsequent requests
+use the Go cookie transparently. The JS key can differ from the Go key.
 */
 package seshcookie

@@ -485,8 +485,6 @@ func (h *Handler[T]) getCookieSession(req *http.Request) (T, []byte, *timestampp
 	value := cookie.Value
 
 	if strings.HasPrefix(value, versionPrefix) {
-		// Go-format cookie: strip prefix and decode
-		value = strings.TrimPrefix(value, versionPrefix)
 		session, protoHash, issuedAt, err := decodeCookie[T](value, h.encKey, h.Config.MaxAge)
 		if err != nil {
 			return zero, nil, nil
@@ -500,11 +498,17 @@ func (h *Handler[T]) getCookieSession(req *http.Request) (T, []byte, *timestampp
 		if err != nil {
 			return zero, nil, nil
 		}
-		// Return with nil hash so writeCookie always rewrites as Go format
+		// nil hash so writeCookie always rewrites as Go format
 		return session, nil, nil
 	}
 
-	return zero, nil, nil
+	// Legacy Go-format cookie (pre-sc1_ version): attempt decode
+	session, _, issuedAt, err := decodeCookie[T](value, h.encKey, h.Config.MaxAge)
+	if err != nil {
+		return zero, nil, nil
+	}
+	// nil hash so writeCookie rewrites with sc1_ prefix
+	return session, nil, issuedAt
 }
 
 func (h *Handler[T]) ServeHTTP(rw http.ResponseWriter, req *http.Request) {

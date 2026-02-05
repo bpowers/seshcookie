@@ -374,6 +374,56 @@ func TestMigrationConvertError(t *testing.T) {
 	}
 }
 
+func TestMigrationGarbageInput(t *testing.T) {
+	goKey := createKeyString()
+
+	config := &Config{
+		CookieName: testCookieName,
+		HTTPOnly:   true,
+		Secure:     false,
+		MaxAge:     24 * time.Hour,
+	}
+
+	convert := func(jsonData []byte) (*pb.TestSession, error) {
+		return &pb.TestSession{Count: 1}, nil
+	}
+
+	mw, err := NewMiddleware[*pb.TestSession](goKey, config,
+		WithMigration[*pb.TestSession]("some-js-key", convert))
+	if err != nil {
+		t.Fatalf("NewMiddleware: %v", err)
+	}
+
+	handler := mw(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		session, err := GetSession[*pb.TestSession](req.Context())
+		if err != nil {
+			http.Error(rw, err.Error(), 500)
+			return
+		}
+		rw.WriteHeader(200)
+		fmt.Fprintf(rw, "count=%d", session.Count)
+	}))
+
+	// Cookie that looks like JS format (3 hyphen-separated parts) but is garbage
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(&http.Cookie{Name: testCookieName, Value: "AAAA-BBBB-CCCC"})
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	// Should get empty session since decryption fails on garbage
+	if string(body) != "count=0" {
+		t.Fatalf("body = %q, want %q (empty session for garbage input)", string(body), "count=0")
+	}
+}
+
 func TestNoMigrationIgnoresJSCookies(t *testing.T) {
 	vectors := loadVectors(t)
 	vec := vectors[0]

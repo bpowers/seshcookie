@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"slices"
 	"strings"
 
 	"google.golang.org/protobuf/proto"
@@ -101,8 +102,7 @@ func decodeJSCookie(encoded string, jsEncKey []byte) ([]byte, error) {
 	// Go's aead.Open expects ciphertext with tag appended.
 	// JS separates them, so concatenate before decrypting.
 	// JS passes nonce as AAD via cipher.setAAD(nonce).
-	ciphertextWithTag := append(ciphertext, tag...)
-	plaintext, err := aeadCipher.Open(nil, nonce, ciphertextWithTag, nonce)
+	plaintext, err := aeadCipher.Open(nil, nonce, slices.Concat(ciphertext, tag), nonce)
 	if err != nil {
 		return nil, fmt.Errorf("aeadCipher.Open: %w", err)
 	}

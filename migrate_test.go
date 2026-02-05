@@ -424,6 +424,85 @@ func TestMigrationGarbageInput(t *testing.T) {
 	}
 }
 
+// TestMigrationWithLegacyGoCookie verifies that when migration is enabled,
+// a legacy Go cookie (no sc1_ prefix, not JS format) is still decodable.
+func TestMigrationWithLegacyGoCookie(t *testing.T) {
+	goKey := createKeyString()
+
+	config := &Config{
+		CookieName: testCookieName,
+		HTTPOnly:   true,
+		Secure:     false,
+		MaxAge:     24 * time.Hour,
+	}
+
+	convert := func(jsonData []byte) (*pb.TestSession, error) {
+		return nil, fmt.Errorf("should not be called for Go cookies")
+	}
+
+	// First, create a Go cookie (with sc1_ prefix) using a handler without migration
+	mwNoMigrate, err := NewMiddleware[*pb.TestSession](goKey, config)
+	if err != nil {
+		t.Fatalf("NewMiddleware: %v", err)
+	}
+
+	setHandler := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		session, _ := GetSession[*pb.TestSession](req.Context())
+		session.Count = 77
+		session.User = "legacy-with-migration"
+		SetSession(req.Context(), session)
+		rw.WriteHeader(200)
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	mwNoMigrate(setHandler).ServeHTTP(w, req)
+
+	cookies := w.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("expected 1 cookie, got %d", len(cookies))
+	}
+
+	// Strip sc1_ prefix to simulate a legacy Go cookie
+	legacyCookie := &http.Cookie{
+		Name:  testCookieName,
+		Value: strings.TrimPrefix(cookies[0].Value, versionPrefix),
+	}
+
+	// Now create a handler WITH migration enabled and send the legacy Go cookie
+	mwWithMigrate, err := NewMiddleware[*pb.TestSession](goKey, config,
+		WithMigration[*pb.TestSession]("some-js-key", convert))
+	if err != nil {
+		t.Fatalf("NewMiddleware: %v", err)
+	}
+
+	readHandler := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		session, err := GetSession[*pb.TestSession](req.Context())
+		if err != nil {
+			http.Error(rw, err.Error(), 500)
+			return
+		}
+		rw.WriteHeader(200)
+		fmt.Fprintf(rw, "count=%d user=%s", session.Count, session.User)
+	})
+
+	req = httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(legacyCookie)
+	w = httptest.NewRecorder()
+	mwWithMigrate(readHandler).ServeHTTP(w, req)
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	if string(body) != "count=77 user=legacy-with-migration" {
+		t.Fatalf("body = %q, want %q", string(body), "count=77 user=legacy-with-migration")
+	}
+}
+
 func TestNoMigrationIgnoresJSCookies(t *testing.T) {
 	vectors := loadVectors(t)
 	vec := vectors[0]

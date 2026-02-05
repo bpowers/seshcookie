@@ -495,11 +495,11 @@ func (h *Handler[T]) getCookieSession(req *http.Request) (T, []byte, *timestampp
 	// No prefix: try JS migration if configured
 	if h.opts.migrate != nil {
 		session, err := h.decodeJSSession(value)
-		if err != nil {
-			return zero, nil, nil
+		if err == nil {
+			// nil hash so writeCookie always rewrites as Go format
+			return session, nil, nil
 		}
-		// nil hash so writeCookie always rewrites as Go format
-		return session, nil, nil
+		// JS decode failed; fall through to legacy Go decode
 	}
 
 	// Legacy Go-format cookie (pre-sc1_ version): attempt decode
